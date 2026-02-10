@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Trash2, Phone } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -13,13 +13,21 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useLeads } from "@/hooks/use-leads";
+import { useSettings } from "@/hooks/use-settings";
+import { useCalls } from "@/hooks/use-calls";
 import { BulkCallDialog } from "@/components/leads/bulk-call-dialog";
+import { toast } from "sonner";
 import type { LeadStatus } from "@/types/lead";
 import type { Lead } from "@/types/lead";
+import type { CallRequest } from "@/types/call";
+
+const MAX_CONCURRENT = 5;
 
 export function LeadsToolbar() {
-  const { leads, filters, setFilters, selectedIds, deleteLeads, deselectAll } =
+  const { leads, filters, setFilters, selectedIds, deleteLeads, deselectAll, incrementCallCount } =
     useLeads();
+  const { settings } = useSettings();
+  const { initiateCall } = useCalls();
   const [searchValue, setSearchValue] = useState(filters.search);
   const [bulkCallOpen, setBulkCallOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -45,6 +53,63 @@ export function LeadsToolbar() {
   };
 
   const selectedLeads = leads.filter((l) => selectedIds.includes(l.id));
+
+  const startBulkCalls = useCallback(async () => {
+    const leadsToCall = [...selectedLeads];
+    deselectAll();
+
+    const toastId = toast.loading(
+      `Bulk calling 0/${leadsToCall.length} complete...`
+    );
+
+    let succeeded = 0;
+    let failed = 0;
+    let idx = 0;
+
+    while (idx < leadsToCall.length) {
+      const batch = leadsToCall.slice(idx, idx + MAX_CONCURRENT);
+
+      const results = await Promise.allSettled(
+        batch.map(async (lead) => {
+          const request: CallRequest = {
+            phoneNumber: lead.phoneNumber,
+            contactName: lead.contactName,
+            clientName: settings.defaults.clientName,
+            agentName: settings.defaults.agentName,
+            companyName: lead.company || settings.defaults.companyName,
+            eventName: settings.defaults.eventName,
+            eventHost: settings.defaults.eventHost,
+            voice: settings.defaults.voice,
+            location: lead.location || settings.defaults.location,
+          };
+
+          await initiateCall(request, lead.id);
+          incrementCallCount(lead.id);
+        })
+      );
+
+      for (const r of results) {
+        if (r.status === "fulfilled") succeeded++;
+        else failed++;
+      }
+
+      idx += batch.length;
+
+      toast.loading(
+        `Bulk calling ${succeeded + failed}/${leadsToCall.length} complete...`,
+        { id: toastId }
+      );
+
+      if (idx < leadsToCall.length) {
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+    }
+
+    toast.success(
+      `Bulk call finished — ${succeeded} succeeded${failed > 0 ? `, ${failed} failed` : ""}`,
+      { id: toastId }
+    );
+  }, [selectedLeads, settings.defaults, initiateCall, incrementCallCount, deselectAll]);
 
   return (
     <>
@@ -130,7 +195,7 @@ export function LeadsToolbar() {
         open={bulkCallOpen}
         onOpenChange={setBulkCallOpen}
         leads={selectedLeads}
-        onComplete={deselectAll}
+        onConfirm={startBulkCalls}
       />
     </>
   );
