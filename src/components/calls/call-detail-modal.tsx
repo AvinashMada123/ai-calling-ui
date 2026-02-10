@@ -86,7 +86,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] p-0 overflow-hidden">
+      <DialogContent className="max-w-2xl max-h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-4">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -114,7 +114,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
               className="grid grid-cols-3 gap-3 mt-4"
             >
               <MetricCard icon={Clock} label="Duration" value={data.duration_seconds} unit="s" />
-              <MetricCard icon={Activity} label="Completion" value={`${Math.round(data.completion_rate * 100)}%`} />
+              <MetricCard icon={Activity} label="Completion" value={`${Math.round(data.completion_rate > 1 ? data.completion_rate : data.completion_rate * 100)}%`} />
               <MetricCard icon={MessageSquare} label="Questions" value={`${data.questions_completed}/${data.total_questions}`} />
             </motion.div>
           )}
@@ -146,7 +146,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
               ))}
             </div>
 
-            <ScrollArea className="h-[380px]">
+            <ScrollArea className="flex-1 min-h-0 max-h-[380px]">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeTab}
