@@ -6,6 +6,12 @@ import { LeadsProvider } from "./leads-context";
 import { CallsProvider } from "./calls-context";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
+import { useCallQualificationSync } from "@/hooks/use-call-qualification";
+
+function QualificationSyncRunner() {
+  useCallQualificationSync();
+  return null;
+}
 
 export function AppProvider({ children }: { children: ReactNode }) {
   return (
@@ -13,6 +19,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       <LeadsProvider>
         <CallsProvider>
           <TooltipProvider>
+            <QualificationSyncRunner />
             {children}
             <Toaster richColors position="bottom-right" />
           </TooltipProvider>

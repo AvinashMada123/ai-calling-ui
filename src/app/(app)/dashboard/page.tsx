@@ -3,6 +3,7 @@
 import { StatsGrid } from "@/components/dashboard/stats-grid";
 import { RecentCallsList } from "@/components/dashboard/recent-calls-list";
 import { CallActivityChart } from "@/components/dashboard/call-activity-chart";
+import { QualificationBreakdown } from "@/components/dashboard/qualification-breakdown";
 import { QuickActions } from "@/components/dashboard/quick-actions";
 
 export default function DashboardPage() {
@@ -22,6 +23,7 @@ export default function DashboardPage() {
         <RecentCallsList />
         <CallActivityChart />
       </div>
+      <QualificationBreakdown />
     </div>
   );
 }

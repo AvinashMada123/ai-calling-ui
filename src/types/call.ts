@@ -16,6 +16,8 @@ export interface CallResponse {
   message: string;
 }
 
+import type { QualificationResult } from "./qualification";
+
 export interface CallEndedData {
   call_uuid: string;
   caller_phone: string;
@@ -33,6 +35,7 @@ export interface CallEndedData {
   question_pairs: QuestionPair[];
   call_metrics: CallMetrics;
   transcript: string;
+  qualification?: QualificationResult;
 }
 
 export interface QuestionPair {

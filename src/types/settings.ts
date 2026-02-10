@@ -13,4 +13,7 @@ export interface AppSettings {
     sidebarCollapsed: boolean;
     animationsEnabled: boolean;
   };
+  ai: {
+    autoQualify: boolean;
+  };
 }

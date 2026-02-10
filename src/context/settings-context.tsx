@@ -44,6 +44,10 @@ function settingsReducer(
             ...state.settings.appearance,
             ...(action.payload.appearance || {}),
           },
+          ai: {
+            ...state.settings.ai,
+            ...(action.payload.ai || {}),
+          },
         },
       };
     case "RESET":

@@ -28,6 +28,16 @@ export function useStats() {
     [callsByDay]
   );
 
+  const qualificationBreakdown = useMemo(() => {
+    const qualified = leads.filter((l) => l.qualificationLevel);
+    return {
+      total: qualified.length,
+      hot: qualified.filter((l) => l.qualificationLevel === "HOT").length,
+      warm: qualified.filter((l) => l.qualificationLevel === "WARM").length,
+      cold: qualified.filter((l) => l.qualificationLevel === "COLD").length,
+    };
+  }, [leads]);
+
   return {
     totalLeads,
     newLeads,
@@ -36,5 +46,6 @@ export function useStats() {
     successRate,
     callsByDay,
     maxCallsInDay,
+    qualificationBreakdown,
   };
 }

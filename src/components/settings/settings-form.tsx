@@ -1,8 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
+import { Brain, CheckCircle2, XCircle } from "lucide-react";
 import { useSettings } from "@/hooks/use-settings";
 import { VOICE_OPTIONS } from "@/lib/constants";
 import {
@@ -35,9 +36,29 @@ export function SettingsForm() {
   const [location, setLocation] = useState(settings.defaults.location);
   const [voice, setVoice] = useState(settings.defaults.voice);
   const [webhookUrl, setWebhookUrl] = useState(settings.webhookUrl);
+  const [autoQualify, setAutoQualify] = useState(
+    settings.ai?.autoQualify ?? true
+  );
   const [animationsEnabled, setAnimationsEnabled] = useState(
     settings.appearance.animationsEnabled
   );
+  const [geminiConfigured, setGeminiConfigured] = useState<boolean | null>(
+    null
+  );
+
+  const checkGeminiStatus = useCallback(async () => {
+    try {
+      const res = await fetch("/api/settings/gemini-status");
+      const data = await res.json();
+      setGeminiConfigured(data.configured);
+    } catch {
+      setGeminiConfigured(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    checkGeminiStatus();
+  }, [checkGeminiStatus]);
 
   useEffect(() => {
     setClientName(settings.defaults.clientName);
@@ -48,6 +69,7 @@ export function SettingsForm() {
     setLocation(settings.defaults.location);
     setVoice(settings.defaults.voice);
     setWebhookUrl(settings.webhookUrl);
+    setAutoQualify(settings.ai?.autoQualify ?? true);
     setAnimationsEnabled(settings.appearance.animationsEnabled);
   }, [settings]);
 
@@ -63,6 +85,9 @@ export function SettingsForm() {
         location,
       },
       webhookUrl,
+      ai: {
+        autoQualify,
+      },
       appearance: {
         ...settings.appearance,
         animationsEnabled,
@@ -203,7 +228,62 @@ export function SettingsForm() {
         </Card>
       </motion.div>
 
-      {/* Section 3: Appearance */}
+      {/* Section 3: AI Lead Qualification */}
+      <motion.div variants={itemVariants}>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Brain className="h-5 w-5" />
+              AI Lead Qualification
+            </CardTitle>
+            <CardDescription>
+              Automatically qualify leads as HOT, WARM, or COLD using Gemini AI
+              after each call
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="flex items-center gap-3 rounded-lg border p-3">
+              {geminiConfigured === null ? (
+                <div className="h-4 w-4 animate-pulse rounded-full bg-muted" />
+              ) : geminiConfigured ? (
+                <CheckCircle2 className="h-4 w-4 text-green-500" />
+              ) : (
+                <XCircle className="h-4 w-4 text-red-500" />
+              )}
+              <div className="flex-1">
+                <p className="text-sm font-medium">
+                  Gemini API Key{" "}
+                  {geminiConfigured === null
+                    ? "Checking..."
+                    : geminiConfigured
+                      ? "Configured"
+                      : "Not Configured"}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Set <code className="text-xs">GEMINI_API_KEY</code> in your{" "}
+                  <code className="text-xs">.env.local</code> file or Vercel
+                  environment variables
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <Label htmlFor="autoQualify">Auto-qualify leads</Label>
+                <p className="text-xs text-muted-foreground">
+                  Automatically update lead status after call qualification
+                </p>
+              </div>
+              <Switch
+                id="autoQualify"
+                checked={autoQualify}
+                onCheckedChange={setAutoQualify}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Section 4: Appearance */}
       <motion.div variants={itemVariants}>
         <Card>
           <CardHeader>

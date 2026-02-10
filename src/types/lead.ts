@@ -1,3 +1,5 @@
+import type { QualificationLevel } from "./qualification";
+
 export interface Lead {
   id: string;
   phoneNumber: string;
@@ -12,6 +14,9 @@ export interface Lead {
   createdAt: string;
   updatedAt: string;
   source: "manual" | "csv" | "excel";
+  qualificationLevel?: QualificationLevel;
+  qualificationConfidence?: number;
+  lastQualifiedAt?: string;
 }
 
 export type LeadStatus =

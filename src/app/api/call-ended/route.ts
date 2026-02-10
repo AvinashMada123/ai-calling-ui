@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addCallUpdate } from "@/lib/call-updates-store";
+import { qualifyLead } from "@/lib/gemini";
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,6 +13,20 @@ export async function POST(request: NextRequest) {
     console.log("[API /api/call-ended] interest_level:", data.interest_level);
     console.log("[API /api/call-ended] completion_rate:", data.completion_rate);
     console.log("[API /api/call-ended] call_summary:", data.call_summary?.slice(0, 100));
+
+    if (data.question_pairs && data.question_pairs.length > 0) {
+      try {
+        const qualification = await qualifyLead(data);
+        if (qualification) {
+          data.qualification = qualification;
+          console.log(
+            `[API /api/call-ended] Qualified as ${qualification.level} (${qualification.confidence}%)`
+          );
+        }
+      } catch (err) {
+        console.error("[API /api/call-ended] Qualification error (non-fatal):", err);
+      }
+    }
 
     addCallUpdate(data);
 

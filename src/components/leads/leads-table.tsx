@@ -20,6 +20,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { LeadStatusBadge } from "@/components/shared/status-badge";
+import { QualificationBadge } from "@/components/shared/qualification-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useLeads } from "@/hooks/use-leads";
 import { formatPhoneNumber } from "@/lib/utils";
@@ -87,6 +88,7 @@ export function LeadsTable() {
             <TableHead>Email</TableHead>
             <TableHead>Company</TableHead>
             <TableHead>Status</TableHead>
+            <TableHead>Qualification</TableHead>
             <TableHead>Source</TableHead>
             <TableHead>Calls</TableHead>
             <TableHead className="w-[70px]">Actions</TableHead>
@@ -121,6 +123,13 @@ export function LeadsTable() {
               </TableCell>
               <TableCell>
                 <LeadStatusBadge status={lead.status} />
+              </TableCell>
+              <TableCell>
+                {lead.qualificationLevel ? (
+                  <QualificationBadge level={lead.qualificationLevel} size="sm" />
+                ) : (
+                  <span className="text-muted-foreground">-</span>
+                )}
               </TableCell>
               <TableCell>
                 <Badge variant="secondary" className="text-xs">

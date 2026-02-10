@@ -11,6 +11,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Progress } from "@/components/ui/progress";
 import {
   Clock,
   MessageSquare,
@@ -23,10 +24,12 @@ import {
   Activity,
   Zap,
   Timer,
+  Target,
 } from "lucide-react";
 import type { CallRecord } from "@/types/call";
 import { CallStatusBadge } from "@/components/shared/status-badge";
-import { formatPhoneNumber } from "@/lib/utils";
+import { QualificationBadge } from "@/components/shared/qualification-badge";
+import { formatPhoneNumber, formatDate } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
 interface CallDetailModalProps {
@@ -64,7 +67,7 @@ function MetricCard({ label, value, unit, icon: Icon }: { label: string; value: 
   );
 }
 
-type Tab = "summary" | "transcript" | "qa" | "metrics";
+type Tab = "summary" | "transcript" | "qa" | "metrics" | "qualification";
 
 export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("summary");
@@ -75,6 +78,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
   const data = call.endedData;
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "summary", label: "Summary", icon: FileText },
+    { id: "qualification", label: "Qualification", icon: Target },
     { id: "transcript", label: "Transcript", icon: MessageSquare },
     { id: "qa", label: "Q&A", icon: BarChart3 },
     { id: "metrics", label: "Metrics", icon: Gauge },
@@ -92,6 +96,12 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
               </p>
             </div>
             <div className="flex items-center gap-2">
+              {data?.qualification && (
+                <QualificationBadge
+                  level={data.qualification.level}
+                  confidence={data.qualification.confidence}
+                />
+              )}
               {data && <InterestBadge level={data.interest_level} />}
               <CallStatusBadge status={call.status} />
             </div>
@@ -280,6 +290,101 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                           </p>
                         </div>
                       )}
+                    </div>
+                  )}
+
+                  {activeTab === "qualification" && data.qualification && (
+                    <div className="space-y-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <QualificationBadge level={data.qualification.level} />
+                          <span className="text-sm text-muted-foreground">
+                            Confidence: {data.qualification.confidence}%
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {formatDate(data.qualification.qualifiedAt)}
+                        </span>
+                      </div>
+
+                      <Progress value={data.qualification.confidence} className="h-2" />
+
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">Reasoning</h4>
+                        <p className="text-sm text-muted-foreground leading-relaxed">
+                          {data.qualification.reasoning}
+                        </p>
+                      </div>
+
+                      {data.qualification.painPoints.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Pain Points Identified</h4>
+                          <div className="space-y-1.5">
+                            {data.qualification.painPoints.map((point, i) => (
+                              <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-red-400 shrink-0" />
+                                {point}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {data.qualification.keyInsights.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Key Insights</h4>
+                          <div className="space-y-1.5">
+                            {data.qualification.keyInsights.map((insight, i) => (
+                              <div key={i} className="flex items-start gap-2 text-sm text-muted-foreground">
+                                <span className="mt-1.5 h-1.5 w-1.5 rounded-full bg-primary shrink-0" />
+                                {insight}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="rounded-lg border border-primary/20 bg-primary/5 p-3">
+                        <h4 className="text-sm font-semibold mb-1">Recommended Next Action</h4>
+                        <p className="text-sm text-muted-foreground">{data.qualification.recommendedAction}</p>
+                      </div>
+
+                      {data.qualification.objectionAnalysis.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Objection Analysis</h4>
+                          <div className="space-y-3">
+                            {data.qualification.objectionAnalysis.map((obj, i) => (
+                              <div key={i} className="rounded-lg border p-3 space-y-1.5">
+                                <div className="flex items-center gap-2">
+                                  <span className="text-sm font-medium">{obj.objection}</span>
+                                  <Badge
+                                    variant="outline"
+                                    className={cn(
+                                      "text-[10px]",
+                                      obj.severity === "high"
+                                        ? "text-red-400 border-red-500/20"
+                                        : obj.severity === "medium"
+                                          ? "text-amber-400 border-amber-500/20"
+                                          : "text-green-400 border-green-500/20"
+                                    )}
+                                  >
+                                    {obj.severity}
+                                  </Badge>
+                                </div>
+                                <p className="text-xs text-muted-foreground">{obj.suggestedResponse}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {activeTab === "qualification" && !data.qualification && (
+                    <div className="text-center py-8 text-sm text-muted-foreground">
+                      <Target className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                      <p>No qualification data available.</p>
+                      <p className="mt-1">Set GEMINI_API_KEY in .env.local to enable AI qualification.</p>
                     </div>
                   )}
                 </motion.div>

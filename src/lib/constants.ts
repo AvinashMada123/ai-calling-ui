@@ -55,6 +55,21 @@ export const CALL_STATUS_CONFIG = {
   },
 } as const;
 
+export const QUALIFICATION_LEVEL_CONFIG = {
+  HOT: {
+    label: "Hot",
+    color: "bg-red-500/15 text-red-400 border-red-500/20",
+  },
+  WARM: {
+    label: "Warm",
+    color: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  },
+  COLD: {
+    label: "Cold",
+    color: "bg-blue-500/15 text-blue-400 border-blue-500/20",
+  },
+} as const;
+
 export const DEFAULT_SETTINGS: AppSettings = {
   defaults: {
     clientName: "fwai",
@@ -69,6 +84,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   appearance: {
     sidebarCollapsed: false,
     animationsEnabled: true,
+  },
+  ai: {
+    autoQualify: true,
   },
 };
 
