@@ -1,20 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { Phone, Loader2 } from "lucide-react";
+import { Phone, Loader2, X } from "lucide-react";
+import { toast } from "sonner";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { useSettings } from "@/hooks/use-settings";
 import { useCalls } from "@/hooks/use-calls";
+import { useLeads } from "@/hooks/use-leads";
 import { validateCallRequest } from "@/lib/validators";
 import { VoiceSelector } from "@/components/calls/voice-selector";
+import { LeadSelector } from "@/components/calls/lead-selector";
 import type { CallRequest } from "@/types/call";
+import type { Lead } from "@/types/lead";
 
 export function CallForm() {
   const { settings } = useSettings();
   const { initiateCall } = useCalls();
+  const { leads, addLead, incrementCallCount } = useLeads();
+  const searchParams = useSearchParams();
 
   const [form, setForm] = useState<CallRequest>({
     phoneNumber: "",
@@ -30,6 +39,42 @@ export function CallForm() {
 
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
+
+  // Read URL params (from leads table "Call" action)
+  useEffect(() => {
+    const phone = searchParams.get("phone");
+    const name = searchParams.get("name");
+    const leadId = searchParams.get("leadId");
+
+    if (phone || name) {
+      setForm((prev) => ({
+        ...prev,
+        ...(phone && { phoneNumber: phone }),
+        ...(name && { contactName: name }),
+      }));
+
+      if (leadId) {
+        setSelectedLeadId(leadId);
+      }
+
+      // Look up lead for additional fields
+      if (phone) {
+        const matchingLead = leads.find((l) => l.phoneNumber === phone);
+        if (matchingLead) {
+          if (!leadId) setSelectedLeadId(matchingLead.id);
+          setForm((prev) => ({
+            ...prev,
+            ...(matchingLead.location && { location: matchingLead.location }),
+            ...(matchingLead.company && { companyName: matchingLead.company }),
+          }));
+        }
+      }
+
+      // Clean URL params after reading
+      window.history.replaceState({}, "", "/call-center");
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const updateField = (field: keyof CallRequest, value: string) => {
     setForm((prev) => ({ ...prev, [field]: value }));
@@ -40,6 +85,27 @@ export function CallForm() {
         return next;
       });
     }
+  };
+
+  const handleLeadSelect = (lead: Lead) => {
+    setSelectedLeadId(lead.id);
+    setForm((prev) => ({
+      ...prev,
+      phoneNumber: lead.phoneNumber,
+      contactName: lead.contactName,
+      ...(lead.location && { location: lead.location }),
+      ...(lead.company && { companyName: lead.company }),
+    }));
+    setErrors({});
+  };
+
+  const handleClearLead = () => {
+    setSelectedLeadId(null);
+    setForm((prev) => ({
+      ...prev,
+      phoneNumber: "",
+      contactName: "",
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -55,12 +121,40 @@ export function CallForm() {
     setLoading(true);
 
     try {
-      await initiateCall(form);
+      // Resolve the lead ID
+      let leadId = selectedLeadId;
+
+      if (!leadId) {
+        // Check if a lead already exists with this phone number
+        const existingLead = leads.find(
+          (l) => l.phoneNumber === form.phoneNumber
+        );
+        if (existingLead) {
+          leadId = existingLead.id;
+        } else {
+          // Auto-create a new lead
+          leadId = addLead({
+            phoneNumber: form.phoneNumber,
+            contactName: form.contactName,
+            company: form.companyName || undefined,
+            location: form.location || undefined,
+            source: "manual",
+          });
+          toast.success("New lead created", {
+            description: `${form.contactName} saved to leads`,
+          });
+        }
+      }
+
+      await initiateCall(form, leadId);
+      incrementCallCount(leadId);
+
       setForm((prev) => ({
         ...prev,
         phoneNumber: "",
         contactName: "",
       }));
+      setSelectedLeadId(null);
     } catch {
       // Error is already handled by the hook with toast
     } finally {
@@ -75,6 +169,31 @@ export function CallForm() {
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {/* Lead selector */}
+          <div className="space-y-2">
+            <Label>Select Lead</Label>
+            <LeadSelector
+              onSelectLead={handleLeadSelect}
+              selectedLeadId={selectedLeadId}
+            />
+            {selectedLeadId && (
+              <div className="flex items-center gap-1.5">
+                <Badge variant="secondary" className="text-xs gap-1">
+                  Lead linked
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="h-4 w-4 p-0 hover:bg-transparent"
+                    onClick={handleClearLead}
+                  >
+                    <X className="h-3 w-3" />
+                  </Button>
+                </Badge>
+              </div>
+            )}
+          </div>
+
           {/* Primary fields */}
           <div className="space-y-3">
             <div className="space-y-2">

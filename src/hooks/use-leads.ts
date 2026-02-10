@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useLeadsContext } from "@/context/leads-context";
 import type { Lead, LeadFilters } from "@/types/lead";
 import { ITEMS_PER_PAGE } from "@/lib/constants";
+import { generateId } from "@/lib/utils";
 
 export function useLeads() {
   const { state, dispatch } = useLeadsContext();
@@ -49,8 +50,10 @@ export function useLeads() {
     selectedIds: state.selectedIds,
     loaded: state.loaded,
 
-    addLead: (lead: Omit<Lead, "id" | "createdAt" | "updatedAt" | "callCount" | "status">) => {
-      dispatch({ type: "ADD_LEAD", payload: lead });
+    addLead: (lead: Omit<Lead, "id" | "createdAt" | "updatedAt" | "callCount" | "status">): string => {
+      const id = generateId();
+      dispatch({ type: "ADD_LEAD", payload: { ...lead, id } });
+      return id;
     },
 
     addLeadsBulk: (leads: Partial<Lead>[], source: Lead["source"]) => {

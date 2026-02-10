@@ -22,7 +22,7 @@ interface LeadsState {
 
 type LeadsAction =
   | { type: "SET_LEADS"; payload: Lead[] }
-  | { type: "ADD_LEAD"; payload: Omit<Lead, "id" | "createdAt" | "updatedAt" | "callCount" | "status"> }
+  | { type: "ADD_LEAD"; payload: Omit<Lead, "createdAt" | "updatedAt" | "callCount" | "status"> }
   | { type: "ADD_LEADS_BULK"; payload: { leads: Partial<Lead>[]; source: Lead["source"] } }
   | { type: "UPDATE_LEAD"; payload: { id: string; updates: Partial<Lead> } }
   | { type: "DELETE_LEADS"; payload: string[] }
@@ -46,7 +46,6 @@ function leadsReducer(state: LeadsState, action: LeadsAction): LeadsState {
       const now = new Date().toISOString();
       const newLead: Lead = {
         ...action.payload,
-        id: generateId(),
         callCount: 0,
         status: "new",
         createdAt: now,

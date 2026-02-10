@@ -147,7 +147,7 @@ export function LeadsTable() {
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem asChild>
                       <Link
-                        href={`/call-center?phone=${encodeURIComponent(lead.phoneNumber)}&name=${encodeURIComponent(lead.contactName)}`}
+                        href={`/call-center?phone=${encodeURIComponent(lead.phoneNumber)}&name=${encodeURIComponent(lead.contactName)}&leadId=${lead.id}`}
                       >
                         <Phone className="mr-2 h-4 w-4" />
                         Call

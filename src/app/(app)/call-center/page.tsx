@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { CallForm } from "@/components/calls/call-form";
 import { CallStatusCard } from "@/components/calls/call-status-card";
 import { CallHistoryTable } from "@/components/calls/call-history-table";
@@ -15,7 +16,9 @@ export default function CallCenterPage() {
       </div>
       <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         <div className="lg:col-span-2">
-          <CallForm />
+          <Suspense>
+            <CallForm />
+          </Suspense>
         </div>
         <div className="lg:col-span-3 space-y-6">
           <CallStatusCard />
