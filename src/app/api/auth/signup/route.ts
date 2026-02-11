@@ -131,9 +131,21 @@ export async function POST(request: NextRequest) {
       expiresIn: SESSION_EXPIRY,
     });
 
+    const profile = {
+      uid,
+      email,
+      displayName,
+      role,
+      orgId,
+      status: "active",
+      createdAt: now,
+      lastLoginAt: now,
+    };
+
     const response = NextResponse.json({
       success: true,
       orgId,
+      profile,
     });
 
     response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {

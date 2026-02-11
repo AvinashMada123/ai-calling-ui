@@ -46,7 +46,29 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-// Fetch user profile via server API to avoid client-side Firestore issues
+const PROFILE_CACHE_KEY = "wl_profile";
+
+function getCachedProfile(): UserProfile | null {
+  try {
+    const cached = sessionStorage.getItem(PROFILE_CACHE_KEY);
+    return cached ? JSON.parse(cached) : null;
+  } catch {
+    return null;
+  }
+}
+
+function setCachedProfile(profile: UserProfile | null) {
+  try {
+    if (profile) {
+      sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    } else {
+      sessionStorage.removeItem(PROFILE_CACHE_KEY);
+    }
+  } catch {
+    // sessionStorage not available
+  }
+}
+
 async function fetchUserProfile(user: User): Promise<UserProfile | null> {
   try {
     const idToken = await user.getIdToken();
@@ -55,7 +77,9 @@ async function fetchUserProfile(user: User): Promise<UserProfile | null> {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    return data.profile || null;
+    const profile = data.profile || null;
+    setCachedProfile(profile);
+    return profile;
   } catch {
     return null;
   }
@@ -82,9 +106,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const profile = await fetchUserProfile(user);
-        setState({ user, userProfile: profile, loading: false, initialized: true });
+        // Instantly render from cache if available — no server round-trip
+        const cached = getCachedProfile();
+        if (cached && cached.uid === user.uid) {
+          setState({ user, userProfile: cached, loading: false, initialized: true });
+          // Silently refresh in background
+          fetchUserProfile(user).then((fresh) => {
+            if (fresh) setState((prev) => ({ ...prev, userProfile: fresh }));
+          });
+        } else {
+          const profile = await fetchUserProfile(user);
+          setState({ user, userProfile: profile, loading: false, initialized: true });
+        }
       } else {
+        setCachedProfile(null);
         setState({ user: null, userProfile: null, loading: false, initialized: true });
       }
     });
@@ -97,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { user } = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await user.getIdToken();
 
-      // Server handles session cookie + lastLogin update
+      // Server sets session cookie and returns profile — single round-trip
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,8 +144,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(data.message || "Login failed");
       }
 
-      // Fetch profile after server has set session
-      const profile = await fetchUserProfile(user);
+      const data = await res.json();
+      const profile = data.profile || null;
+      setCachedProfile(profile);
       setState({ user, userProfile: profile, loading: false, initialized: true });
     } catch (err) {
       setState((prev) => ({ ...prev, loading: false }));
@@ -127,7 +163,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
       setState((prev) => ({ ...prev, loading: true }));
       try {
-        // Step 1: Create Firebase Auth user (client-side)
         const { user } = await createUserWithEmailAndPassword(
           auth,
           email,
@@ -135,7 +170,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
         await updateProfile(user, { displayName });
 
-        // Step 2: Server handles org creation, user profile, and session cookie
         const idToken = await user.getIdToken();
         const res = await fetch("/api/auth/signup", {
           method: "POST",
@@ -148,8 +182,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(data.message || "Failed to create account");
         }
 
-        // Fetch profile after server has created everything
-        const profile = await fetchUserProfile(user);
+        const data = await res.json();
+        const profile = data.profile || null;
+        setCachedProfile(profile);
         setState({ user, userProfile: profile, loading: false, initialized: true });
       } catch (err) {
         setState((prev) => ({ ...prev, loading: false }));
@@ -187,7 +222,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(data.message || "Failed to accept invite");
         }
 
-        const profile = await fetchUserProfile(user);
+        const data = await res.json();
+        const profile = data.profile || null;
+        setCachedProfile(profile);
         setState({ user, userProfile: profile, loading: false, initialized: true });
       } catch (err) {
         setState((prev) => ({ ...prev, loading: false }));
@@ -198,6 +235,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
+    setCachedProfile(null);
     await clearSessionCookie();
     await firebaseSignOut(auth);
     setState({

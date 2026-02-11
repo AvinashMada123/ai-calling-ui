@@ -18,18 +18,22 @@ export async function POST(request: NextRequest) {
     const adminAuth = getAdminAuth();
     const decoded = await adminAuth.verifyIdToken(idToken);
 
-    // Update last login
+    // Fetch profile + update last login in parallel
     const adminDb = getAdminDb();
-    await adminDb.collection("users").doc(decoded.uid).update({
-      lastLoginAt: new Date().toISOString(),
-    });
+    const userRef = adminDb.collection("users").doc(decoded.uid);
+    const [userDoc, sessionCookie] = await Promise.all([
+      userRef.get(),
+      adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_EXPIRY }),
+    ]);
 
-    // Create session cookie
-    const sessionCookie = await adminAuth.createSessionCookie(idToken, {
-      expiresIn: SESSION_EXPIRY,
-    });
+    // Update last login (fire-and-forget)
+    userRef.update({ lastLoginAt: new Date().toISOString() }).catch(() => {});
 
-    const response = NextResponse.json({ success: true });
+    const profile = userDoc.exists
+      ? { uid: decoded.uid, ...userDoc.data() }
+      : null;
+
+    const response = NextResponse.json({ success: true, profile });
 
     response.cookies.set(SESSION_COOKIE_NAME, sessionCookie, {
       httpOnly: true,
