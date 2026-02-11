@@ -83,11 +83,14 @@ export async function POST(request: NextRequest) {
     const protocol = host.includes("localhost") ? "http" : "https";
     const callEndWebhookUrl = `${protocol}://${host}/api/call-ended`;
 
-    // Build payload matching the exact format the call server expects
+    // Build payload matching the exact format the call server expects.
+    // orgId is included so the call server can pass it back in the call-ended
+    // callback, allowing /api/call-ended to update the correct org in Firestore.
     const callServerPayload = {
       phoneNumber: payload.phoneNumber,
       contactName: payload.contactName || "Customer",
       clientName: payload.clientName || "fwai",
+      orgId,
       n8nWebhookUrl: N8N_TRANSCRIPT_WEBHOOK_URL,
       callEndWebhookUrl,
       context,
