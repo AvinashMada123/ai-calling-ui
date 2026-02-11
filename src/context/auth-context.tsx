@@ -55,11 +55,22 @@ async function fetchUserProfile(uid: string): Promise<UserProfile | null> {
 
 async function createSessionCookie(user: User) {
   const idToken = await user.getIdToken();
-  await fetch("/api/auth/session", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ idToken }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const res = await fetch("/api/auth/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken }),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      console.error("[Session] Server returned", res.status, body);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function clearSessionCookie() {
@@ -117,11 +128,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
       setState((prev) => ({ ...prev, loading: true }));
       try {
+        console.log("[SignUp] Step 1: Creating Firebase Auth user...");
         const { user } = await createUserWithEmailAndPassword(
           auth,
           email,
           password
         );
+        console.log("[SignUp] Step 2: Updating profile...");
         await updateProfile(user, { displayName });
 
         // Create organization
@@ -131,6 +144,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .replace(/(^-|-$)/g, "");
         const orgRef = doc(db, "organizations", crypto.randomUUID());
         const now = new Date().toISOString();
+        console.log("[SignUp] Step 3: Creating organization in Firestore...");
         await setDoc(orgRef, {
           name: orgName,
           slug: orgSlug,
@@ -160,7 +174,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           },
         });
 
-        // Create user profile
+        console.log("[SignUp] Step 4: Creating user profile in Firestore...");
         await setDoc(doc(db, "users", user.uid), {
           email,
           displayName,
@@ -171,7 +185,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           lastLoginAt: now,
         });
 
-        await createSessionCookie(user);
+        console.log("[SignUp] Step 5: Creating session cookie...");
+        try {
+          await createSessionCookie(user);
+          console.log("[SignUp] Session cookie created.");
+        } catch (sessionErr) {
+          console.warn("[SignUp] Session cookie failed (non-fatal):", sessionErr);
+        }
+        console.log("[SignUp] Complete!");
       } finally {
         setState((prev) => ({ ...prev, loading: false }));
       }
