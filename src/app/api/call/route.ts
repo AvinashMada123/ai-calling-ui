@@ -117,7 +117,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({
+      ...data,
+      _debug: {
+        resolvedContext: context,
+        botConfigFound: !!configDoc,
+        contextVarsFromFirestore: ctx,
+      },
+    });
   } catch (error) {
     console.error("[API /api/call] Error:", error);
     return NextResponse.json(
