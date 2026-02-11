@@ -6,6 +6,10 @@ const CALL_SERVER_URL =
   process.env.CALL_SERVER_URL ||
   "http://34.93.142.172:3001/call/conversational";
 
+const N8N_TRANSCRIPT_WEBHOOK_URL =
+  process.env.N8N_TRANSCRIPT_WEBHOOK_URL ||
+  "https://n8n.srv1100770.hstgr.cloud/webhook/fwai-transcript";
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformBotConfig(config: any) {
   const questions = (config.questions || [])
@@ -79,21 +83,19 @@ export async function POST(request: NextRequest) {
     const protocol = host.includes("localhost") ? "http" : "https";
     const callEndWebhookUrl = `${protocol}://${host}/api/call-ended`;
 
-    // Build payload for the call server (bypass n8n — send directly)
+    // Build payload matching the exact format the call server expects
     const callServerPayload = {
       phoneNumber: payload.phoneNumber,
-      contactName: payload.contactName,
-      clientName: payload.clientName,
-      voice: payload.voice,
-      orgId,
+      contactName: payload.contactName || "Customer",
+      clientName: payload.clientName || "fwai",
+      n8nWebhookUrl: N8N_TRANSCRIPT_WEBHOOK_URL,
       callEndWebhookUrl,
       context,
       ...botConfigPayload,
     };
 
     console.log("[API /api/call] Call server URL:", CALL_SERVER_URL);
-    console.log("[API /api/call] Context:", JSON.stringify(context));
-    console.log("[API /api/call] callEndWebhookUrl:", callEndWebhookUrl);
+    console.log("[API /api/call] Full payload:", JSON.stringify(callServerPayload, null, 2));
 
     const response = await fetch(CALL_SERVER_URL, {
       method: "POST",
