@@ -99,9 +99,10 @@ export async function POST(request: NextRequest) {
       ...botConfigPayload,
     };
 
-    console.log("[API /api/call] Call server URL:", CALL_SERVER_URL);
-    console.log("[API /api/call] Prompt being sent:", callServerPayload.prompt ?? "(no prompt resolved)");
-    console.log("[API /api/call] Full payload:", JSON.stringify(callServerPayload, null, 2));
+    const payloadJson = JSON.stringify(callServerPayload, null, 2);
+    console.log("[API /api/call] Exact curl being sent:");
+    console.log(`curl -X POST '${CALL_SERVER_URL}' -H 'Content-Type: application/json' -d '${JSON.stringify(callServerPayload)}'`);
+    console.log("[API /api/call] Full payload:\n", payloadJson);
 
     const response = await fetch(CALL_SERVER_URL, {
       method: "POST",
@@ -126,6 +127,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       ...data,
       _debug: {
+        callServerUrl: CALL_SERVER_URL,
+        payloadSentToCallServer: callServerPayload,
         resolvedContext: context,
         botConfigFound: !!configDoc,
         contextVarsFromFirestore: ctx,
