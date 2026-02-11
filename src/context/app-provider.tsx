@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode } from "react";
+import { AuthProvider } from "./auth-context";
 import { SettingsProvider } from "./settings-context";
 import { LeadsProvider } from "./leads-context";
 import { CallsProvider } from "./calls-context";
@@ -15,16 +16,18 @@ function QualificationSyncRunner() {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   return (
-    <SettingsProvider>
-      <LeadsProvider>
-        <CallsProvider>
-          <TooltipProvider>
-            <QualificationSyncRunner />
-            {children}
-            <Toaster richColors position="bottom-right" />
-          </TooltipProvider>
-        </CallsProvider>
-      </LeadsProvider>
-    </SettingsProvider>
+    <AuthProvider>
+      <SettingsProvider>
+        <LeadsProvider>
+          <CallsProvider>
+            <TooltipProvider>
+              <QualificationSyncRunner />
+              {children}
+              <Toaster richColors position="bottom-right" />
+            </TooltipProvider>
+          </CallsProvider>
+        </LeadsProvider>
+      </SettingsProvider>
+    </AuthProvider>
   );
 }

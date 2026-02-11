@@ -5,12 +5,16 @@ import {
   useContext,
   useReducer,
   useEffect,
+  useCallback,
   type ReactNode,
 } from "react";
 import type { CallRecord, CallStatus } from "@/types/call";
-import { getStorageItem, setStorageItem } from "@/lib/storage";
-
-const STORAGE_KEY = "wavelength_calls";
+import { useAuthContext } from "./auth-context";
+import {
+  getCalls as firestoreGetCalls,
+  addCall as firestoreAddCall,
+  updateCall as firestoreUpdateCall,
+} from "@/lib/firestore/calls";
 
 interface CallsState {
   calls: CallRecord[];
@@ -59,22 +63,65 @@ const CallsContext = createContext<{
 } | null>(null);
 
 export function CallsProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(callsReducer, {
+  const { userProfile } = useAuthContext();
+  const orgId = userProfile?.orgId ?? null;
+
+  const [state, baseDispatch] = useReducer(callsReducer, {
     calls: [],
     activeCall: null,
     loaded: false,
   });
 
+  // Load calls from Firestore when authenticated
   useEffect(() => {
-    const stored = getStorageItem<CallRecord[]>(STORAGE_KEY, []);
-    dispatch({ type: "SET_CALLS", payload: stored });
-  }, []);
-
-  useEffect(() => {
-    if (state.loaded) {
-      setStorageItem(STORAGE_KEY, state.calls);
+    if (!orgId) {
+      baseDispatch({ type: "SET_CALLS", payload: [] });
+      return;
     }
-  }, [state.calls, state.loaded]);
+    let cancelled = false;
+    firestoreGetCalls(orgId)
+      .then((calls) => {
+        if (!cancelled) {
+          baseDispatch({ type: "SET_CALLS", payload: calls });
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load calls from Firestore:", err);
+        if (!cancelled) {
+          baseDispatch({ type: "SET_CALLS", payload: [] });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  // Enhanced dispatch that also persists to Firestore
+  const dispatch: React.Dispatch<CallsAction> = useCallback(
+    (action: CallsAction) => {
+      baseDispatch(action);
+
+      if (!orgId) return;
+
+      switch (action.type) {
+        case "ADD_CALL": {
+          firestoreAddCall(orgId, action.payload).catch((err) =>
+            console.error("Failed to add call to Firestore:", err)
+          );
+          break;
+        }
+        case "UPDATE_CALL": {
+          firestoreUpdateCall(orgId, action.payload.id, action.payload.updates).catch((err) =>
+            console.error("Failed to update call in Firestore:", err)
+          );
+          break;
+        }
+        default:
+          break;
+      }
+    },
+    [orgId]
+  );
 
   return (
     <CallsContext.Provider value={{ state, dispatch }}>

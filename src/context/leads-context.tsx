@@ -5,13 +5,20 @@ import {
   useContext,
   useReducer,
   useEffect,
+  useCallback,
   type ReactNode,
 } from "react";
 import type { Lead, LeadFilters } from "@/types/lead";
-import { getStorageItem, setStorageItem } from "@/lib/storage";
 import { generateId } from "@/lib/utils";
-
-const STORAGE_KEY = "wavelength_leads";
+import { useAuthContext } from "./auth-context";
+import {
+  getLeads as firestoreGetLeads,
+  addLead as firestoreAddLead,
+  addLeadsBulk as firestoreAddLeadsBulk,
+  updateLead as firestoreUpdateLead,
+  deleteLeads as firestoreDeleteLeads,
+  incrementCallCount as firestoreIncrementCallCount,
+} from "@/lib/firestore/leads";
 
 interface LeadsState {
   leads: Lead[];
@@ -130,23 +137,107 @@ const LeadsContext = createContext<{
 } | null>(null);
 
 export function LeadsProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(leadsReducer, {
+  const { userProfile } = useAuthContext();
+  const orgId = userProfile?.orgId ?? null;
+
+  const [state, baseDispatch] = useReducer(leadsReducer, {
     leads: [],
     filters: initialFilters,
     selectedIds: [],
     loaded: false,
   });
 
+  // Load leads from Firestore when authenticated
   useEffect(() => {
-    const stored = getStorageItem<Lead[]>(STORAGE_KEY, []);
-    dispatch({ type: "SET_LEADS", payload: stored });
-  }, []);
-
-  useEffect(() => {
-    if (state.loaded) {
-      setStorageItem(STORAGE_KEY, state.leads);
+    if (!orgId) {
+      baseDispatch({ type: "SET_LEADS", payload: [] });
+      return;
     }
-  }, [state.leads, state.loaded]);
+    let cancelled = false;
+    firestoreGetLeads(orgId)
+      .then((leads) => {
+        if (!cancelled) {
+          baseDispatch({ type: "SET_LEADS", payload: leads });
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load leads from Firestore:", err);
+        if (!cancelled) {
+          baseDispatch({ type: "SET_LEADS", payload: [] });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  // Enhanced dispatch that also persists to Firestore
+  const dispatch: React.Dispatch<LeadsAction> = useCallback(
+    (action: LeadsAction) => {
+      baseDispatch(action);
+
+      if (!orgId) return;
+
+      switch (action.type) {
+        case "ADD_LEAD": {
+          const now = new Date().toISOString();
+          const newLead: Lead = {
+            ...action.payload,
+            callCount: 0,
+            status: "new",
+            createdAt: now,
+            updatedAt: now,
+          };
+          firestoreAddLead(orgId, newLead).catch((err) =>
+            console.error("Failed to add lead to Firestore:", err)
+          );
+          break;
+        }
+        case "ADD_LEADS_BULK": {
+          const now = new Date().toISOString();
+          const newLeads: Lead[] = action.payload.leads.map((l) => ({
+            id: generateId(),
+            phoneNumber: l.phoneNumber || "",
+            contactName: l.contactName || "",
+            email: l.email,
+            company: l.company,
+            location: l.location,
+            tags: l.tags,
+            status: "new" as const,
+            callCount: 0,
+            createdAt: now,
+            updatedAt: now,
+            source: action.payload.source,
+          }));
+          firestoreAddLeadsBulk(orgId, newLeads).catch((err) =>
+            console.error("Failed to bulk add leads to Firestore:", err)
+          );
+          break;
+        }
+        case "UPDATE_LEAD": {
+          firestoreUpdateLead(orgId, action.payload.id, action.payload.updates).catch((err) =>
+            console.error("Failed to update lead in Firestore:", err)
+          );
+          break;
+        }
+        case "DELETE_LEADS": {
+          firestoreDeleteLeads(orgId, action.payload).catch((err) =>
+            console.error("Failed to delete leads from Firestore:", err)
+          );
+          break;
+        }
+        case "INCREMENT_CALL_COUNT": {
+          firestoreIncrementCallCount(orgId, action.payload).catch((err) =>
+            console.error("Failed to increment call count in Firestore:", err)
+          );
+          break;
+        }
+        default:
+          break;
+      }
+    },
+    [orgId]
+  );
 
   return (
     <LeadsContext.Provider value={{ state, dispatch }}>

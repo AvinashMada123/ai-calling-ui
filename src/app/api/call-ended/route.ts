@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { addCallUpdate } from "@/lib/call-updates-store";
 import { qualifyLead } from "@/lib/gemini";
+import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,7 +15,9 @@ export async function POST(request: NextRequest) {
     console.log("[API /api/call-ended] interest_level:", data.interest_level);
     console.log("[API /api/call-ended] completion_rate:", data.completion_rate);
     console.log("[API /api/call-ended] call_summary:", data.call_summary?.slice(0, 100));
+    console.log("[API /api/call-ended] orgId:", data.orgId);
 
+    // Qualify lead with Gemini if we have question pairs
     if (data.question_pairs && data.question_pairs.length > 0) {
       try {
         const qualification = await qualifyLead(data);
@@ -28,7 +32,57 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    addCallUpdate(data);
+    // Extract orgId from payload (passed through from call initiation)
+    const orgId: string = data.orgId || "";
+
+    // Update Firestore if orgId is present
+    if (orgId) {
+      try {
+        // Find the call document by call_uuid within the org's calls collection
+        const callsSnap = await adminDb
+          .collection("organizations")
+          .doc(orgId)
+          .collection("calls")
+          .where("callUuid", "==", data.call_uuid)
+          .limit(1)
+          .get();
+
+        if (!callsSnap.empty) {
+          const callDocRef = callsSnap.docs[0].ref;
+          await callDocRef.update({
+            status: "completed",
+            endedData: data,
+            durationSeconds: data.duration_seconds || 0,
+            interestLevel: data.interest_level || "",
+            completionRate: data.completion_rate || 0,
+            callSummary: data.call_summary || "",
+            qualification: data.qualification || null,
+            completedAt: FieldValue.serverTimestamp(),
+          });
+          console.log(`[API /api/call-ended] Updated Firestore call doc for ${data.call_uuid}`);
+        } else {
+          console.warn(`[API /api/call-ended] No Firestore call doc found for ${data.call_uuid} in org ${orgId}`);
+        }
+
+        // Increment usage counters on the organization
+        await adminDb
+          .collection("organizations")
+          .doc(orgId)
+          .update({
+            "usage.totalCalls": FieldValue.increment(1),
+            "usage.totalMinutes": FieldValue.increment(
+              Math.ceil((data.duration_seconds || 0) / 60)
+            ),
+            "usage.lastCallAt": FieldValue.serverTimestamp(),
+          });
+        console.log(`[API /api/call-ended] Incremented usage for org ${orgId}`);
+      } catch (firestoreErr) {
+        console.error("[API /api/call-ended] Firestore update error (non-fatal):", firestoreErr);
+      }
+    }
+
+    // Keep in-memory store for backward compatibility (scoped by orgId)
+    addCallUpdate(orgId, data);
 
     return NextResponse.json({
       success: true,

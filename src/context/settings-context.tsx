@@ -5,13 +5,16 @@ import {
   useContext,
   useReducer,
   useEffect,
+  useCallback,
   type ReactNode,
 } from "react";
 import type { AppSettings } from "@/types/settings";
 import { DEFAULT_SETTINGS } from "@/lib/constants";
-import { getStorageItem, setStorageItem } from "@/lib/storage";
-
-const STORAGE_KEY = "wavelength_settings";
+import { useAuthContext } from "./auth-context";
+import {
+  getOrgSettings,
+  updateOrgSettings,
+} from "@/lib/firestore/organizations";
 
 type SettingsAction =
   | { type: "SET_SETTINGS"; payload: AppSettings }
@@ -63,21 +66,70 @@ const SettingsContext = createContext<{
 } | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(settingsReducer, {
+  const { userProfile } = useAuthContext();
+  const orgId = userProfile?.orgId ?? null;
+
+  const [state, baseDispatch] = useReducer(settingsReducer, {
     settings: DEFAULT_SETTINGS,
     loaded: false,
   });
 
+  // Load settings from Firestore when authenticated
   useEffect(() => {
-    const stored = getStorageItem<AppSettings>(STORAGE_KEY, DEFAULT_SETTINGS);
-    dispatch({ type: "SET_SETTINGS", payload: { ...DEFAULT_SETTINGS, ...stored } });
-  }, []);
-
-  useEffect(() => {
-    if (state.loaded) {
-      setStorageItem(STORAGE_KEY, state.settings);
+    if (!orgId) {
+      baseDispatch({
+        type: "SET_SETTINGS",
+        payload: DEFAULT_SETTINGS,
+      });
+      return;
     }
-  }, [state.settings, state.loaded]);
+    let cancelled = false;
+    getOrgSettings(orgId)
+      .then((settings) => {
+        if (!cancelled) {
+          baseDispatch({
+            type: "SET_SETTINGS",
+            payload: settings ? { ...DEFAULT_SETTINGS, ...settings } : DEFAULT_SETTINGS,
+          });
+        }
+      })
+      .catch((err) => {
+        console.error("Failed to load settings from Firestore:", err);
+        if (!cancelled) {
+          baseDispatch({ type: "SET_SETTINGS", payload: DEFAULT_SETTINGS });
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  // Enhanced dispatch that also persists to Firestore
+  const dispatch: React.Dispatch<SettingsAction> = useCallback(
+    (action: SettingsAction) => {
+      baseDispatch(action);
+
+      if (!orgId) return;
+
+      switch (action.type) {
+        case "UPDATE_SETTINGS": {
+          updateOrgSettings(orgId, action.payload).catch((err) =>
+            console.error("Failed to update settings in Firestore:", err)
+          );
+          break;
+        }
+        case "RESET": {
+          updateOrgSettings(orgId, DEFAULT_SETTINGS).catch((err) =>
+            console.error("Failed to reset settings in Firestore:", err)
+          );
+          break;
+        }
+        default:
+          break;
+      }
+    },
+    [orgId]
+  );
 
   return (
     <SettingsContext.Provider value={{ state, dispatch }}>
