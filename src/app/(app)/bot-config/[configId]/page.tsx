@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import {
@@ -47,7 +47,7 @@ async function apiBotConfigs(
 export default function BotConfigEditorPage() {
   const params = useParams();
   const router = useRouter();
-  const { orgId, user, initialData } = useAuth();
+  const { orgId, user, initialData, refreshProfile } = useAuth();
 
   const configId = params.configId as string;
 
@@ -62,6 +62,7 @@ export default function BotConfigEditorPage() {
   const [questions, setQuestions] = useState<BotQuestion[]>([]);
   const [objections, setObjections] = useState<BotObjection[]>([]);
   const [contextVariables, setContextVariables] = useState<BotContextVariables>({});
+  const hasLoadedRef = useRef(false);
 
   const populateConfig = useCallback((found: BotConfig) => {
     setConfig(found);
@@ -71,11 +72,12 @@ export default function BotConfigEditorPage() {
     setObjections([...found.objections]);
     setContextVariables(found.contextVariables || {});
     setLoading(false);
+    hasLoadedRef.current = true;
   }, []);
 
-  // Try initialData first, then fall back to API
+  // Load config once — use initialData for instant render, fall back to API
   useEffect(() => {
-    if (!orgId) return;
+    if (!orgId || hasLoadedRef.current) return;
 
     if (initialData?.botConfigs) {
       const found = (initialData.botConfigs as BotConfig[]).find((c) => c.id === configId);
@@ -130,6 +132,8 @@ export default function BotConfigEditorPage() {
         },
       });
       toast.success("Configuration saved successfully");
+      // Refresh auth context so initialData/cache has the updated bot config
+      refreshProfile();
     } catch {
       toast.error("Failed to save configuration");
     } finally {
