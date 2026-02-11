@@ -60,7 +60,13 @@ export function useCalls() {
 
     const poll = async () => {
       try {
-        const res = await fetch("/api/call-updates");
+        // Collect UUIDs of active calls to check their status in Firestore
+        const activeUuids = state.calls
+          .filter((c) => (c.status === "initiating" || c.status === "in-progress") && c.callUuid)
+          .map((c) => c.callUuid);
+        if (activeUuids.length === 0) return;
+
+        const res = await fetch(`/api/call-updates?uuids=${activeUuids.join(",")}`);
         if (!res.ok) return;
         const { updates } = await res.json();
         for (const update of updates) {
