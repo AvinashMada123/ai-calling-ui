@@ -15,7 +15,7 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import type { BotConfig, BotQuestion, BotObjection } from "@/types/bot-config";
+import type { BotConfig, BotQuestion, BotObjection, BotContextVariables } from "@/types/bot-config";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,7 +24,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 
-type TabId = "prompt" | "questions" | "objections";
+type TabId = "prompt" | "context" | "questions" | "objections";
 
 async function apiBotConfigs(
   user: { getIdToken: () => Promise<string> },
@@ -61,6 +61,7 @@ export default function BotConfigEditorPage() {
   const [prompt, setPrompt] = useState("");
   const [questions, setQuestions] = useState<BotQuestion[]>([]);
   const [objections, setObjections] = useState<BotObjection[]>([]);
+  const [contextVariables, setContextVariables] = useState<BotContextVariables>({});
 
   const populateConfig = useCallback((found: BotConfig) => {
     setConfig(found);
@@ -68,6 +69,7 @@ export default function BotConfigEditorPage() {
     setPrompt(found.prompt);
     setQuestions([...found.questions].sort((a, b) => a.order - b.order));
     setObjections([...found.objections]);
+    setContextVariables(found.contextVariables || {});
     setLoading(false);
   }, []);
 
@@ -124,6 +126,7 @@ export default function BotConfigEditorPage() {
           questions,
           objections,
           objectionKeywords,
+          contextVariables,
         },
       });
       toast.success("Configuration saved successfully");
@@ -185,6 +188,7 @@ export default function BotConfigEditorPage() {
 
   const tabs: { id: TabId; label: string }[] = [
     { id: "prompt", label: "Prompt" },
+    { id: "context", label: "Context" },
     { id: "questions", label: "Questions" },
     { id: "objections", label: "Objections" },
   ];
@@ -258,6 +262,12 @@ export default function BotConfigEditorPage() {
         {activeTab === "prompt" && (
           <PromptTab prompt={prompt} onPromptChange={setPrompt} />
         )}
+        {activeTab === "context" && (
+          <ContextTab
+            contextVariables={contextVariables}
+            onContextChange={setContextVariables}
+          />
+        )}
         {activeTab === "questions" && (
           <QuestionsTab
             questions={questions}
@@ -323,6 +333,56 @@ function PromptTab({
               </div>
             ))}
           </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/* ========== Context Tab ========== */
+function ContextTab({
+  contextVariables,
+  onContextChange,
+}: {
+  contextVariables: BotContextVariables;
+  onContextChange: (v: BotContextVariables) => void;
+}) {
+  const fields: { key: keyof BotContextVariables; label: string; placeholder: string; variable: string }[] = [
+    { key: "agentName", label: "Agent Name", placeholder: "e.g. Priya", variable: "{agent_name}" },
+    { key: "companyName", label: "Company Name", placeholder: "e.g. FutureWorks AI", variable: "{company_name}" },
+    { key: "eventName", label: "Event Name", placeholder: "e.g. AI Masterclass", variable: "{event_name}" },
+    { key: "eventHost", label: "Event Host", placeholder: "e.g. Avinash", variable: "{event_host}" },
+    { key: "location", label: "Location", placeholder: "e.g. Hyderabad", variable: "{location}" },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Context Variables</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          These values replace the {"{variable}"} placeholders in your prompt and questions.
+          When set here, callers won&apos;t need to fill them in the call form.
+        </p>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {fields.map((f) => (
+            <div key={f.key} className="space-y-1.5">
+              <Label className="text-sm">
+                {f.label}
+                <Badge variant="secondary" className="ml-2 font-mono text-xs">
+                  {f.variable}
+                </Badge>
+              </Label>
+              <Input
+                value={contextVariables[f.key] || ""}
+                onChange={(e) =>
+                  onContextChange({ ...contextVariables, [f.key]: e.target.value })
+                }
+                placeholder={f.placeholder}
+              />
+            </div>
+          ))}
         </div>
       </CardContent>
     </Card>

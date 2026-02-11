@@ -113,7 +113,7 @@ export function CallForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const validation = validateCallRequest(form);
+    const validation = validateCallRequest(form, { hasBotConfig: !!form.botConfigId });
     if (!validation.valid) {
       setErrors(validation.errors);
       return;
@@ -225,7 +225,7 @@ export function CallForm() {
             </div>
           </div>
 
-          {/* Secondary fields in 2-col grid */}
+          {/* Client name — always required */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
               <Label htmlFor="clientName" className="text-xs">
@@ -241,82 +241,91 @@ export function CallForm() {
                 <p className="text-xs text-red-500">{errors.clientName}</p>
               )}
             </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="agentName" className="text-xs">
-                Agent Name
-              </Label>
-              <Input
-                id="agentName"
-                className="h-8 text-sm"
-                value={form.agentName}
-                onChange={(e) => updateField("agentName", e.target.value)}
-              />
-              {errors.agentName && (
-                <p className="text-xs text-red-500">{errors.agentName}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="companyName" className="text-xs">
-                Company Name
-              </Label>
-              <Input
-                id="companyName"
-                className="h-8 text-sm"
-                value={form.companyName}
-                onChange={(e) => updateField("companyName", e.target.value)}
-              />
-              {errors.companyName && (
-                <p className="text-xs text-red-500">{errors.companyName}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="eventName" className="text-xs">
-                Event Name
-              </Label>
-              <Input
-                id="eventName"
-                className="h-8 text-sm"
-                value={form.eventName}
-                onChange={(e) => updateField("eventName", e.target.value)}
-              />
-              {errors.eventName && (
-                <p className="text-xs text-red-500">{errors.eventName}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="eventHost" className="text-xs">
-                Event Host
-              </Label>
-              <Input
-                id="eventHost"
-                className="h-8 text-sm"
-                value={form.eventHost}
-                onChange={(e) => updateField("eventHost", e.target.value)}
-              />
-              {errors.eventHost && (
-                <p className="text-xs text-red-500">{errors.eventHost}</p>
-              )}
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location" className="text-xs">
-                Location
-              </Label>
-              <Input
-                id="location"
-                className="h-8 text-sm"
-                value={form.location}
-                onChange={(e) => updateField("location", e.target.value)}
-              />
-              {errors.location && (
-                <p className="text-xs text-red-500">{errors.location}</p>
-              )}
-            </div>
           </div>
+
+          {/* Context fields — hidden when bot config provides them */}
+          {!form.botConfigId ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="agentName" className="text-xs">
+                  Agent Name
+                </Label>
+                <Input
+                  id="agentName"
+                  className="h-8 text-sm"
+                  value={form.agentName}
+                  onChange={(e) => updateField("agentName", e.target.value)}
+                />
+                {errors.agentName && (
+                  <p className="text-xs text-red-500">{errors.agentName}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="companyName" className="text-xs">
+                  Company Name
+                </Label>
+                <Input
+                  id="companyName"
+                  className="h-8 text-sm"
+                  value={form.companyName}
+                  onChange={(e) => updateField("companyName", e.target.value)}
+                />
+                {errors.companyName && (
+                  <p className="text-xs text-red-500">{errors.companyName}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="eventName" className="text-xs">
+                  Event Name
+                </Label>
+                <Input
+                  id="eventName"
+                  className="h-8 text-sm"
+                  value={form.eventName}
+                  onChange={(e) => updateField("eventName", e.target.value)}
+                />
+                {errors.eventName && (
+                  <p className="text-xs text-red-500">{errors.eventName}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="eventHost" className="text-xs">
+                  Event Host
+                </Label>
+                <Input
+                  id="eventHost"
+                  className="h-8 text-sm"
+                  value={form.eventHost}
+                  onChange={(e) => updateField("eventHost", e.target.value)}
+                />
+                {errors.eventHost && (
+                  <p className="text-xs text-red-500">{errors.eventHost}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="location" className="text-xs">
+                  Location
+                </Label>
+                <Input
+                  id="location"
+                  className="h-8 text-sm"
+                  value={form.location}
+                  onChange={(e) => updateField("location", e.target.value)}
+                />
+                {errors.location && (
+                  <p className="text-xs text-red-500">{errors.location}</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground rounded-md border border-dashed px-3 py-2">
+              Agent name, company, event &amp; location are provided by the selected bot config.
+            </p>
+          )}
 
           {/* Voice selector */}
           <VoiceSelector

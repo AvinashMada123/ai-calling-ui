@@ -12,6 +12,14 @@ export interface BotObjection {
   keywords: string[];
 }
 
+export interface BotContextVariables {
+  agentName?: string;
+  companyName?: string;
+  eventName?: string;
+  eventHost?: string;
+  location?: string;
+}
+
 export interface BotConfig {
   id: string;
   name: string;
@@ -20,6 +28,7 @@ export interface BotConfig {
   questions: BotQuestion[];
   objections: BotObjection[];
   objectionKeywords: Record<string, string[]>;
+  contextVariables?: BotContextVariables;
   qualificationCriteria: {
     hot: string;
     warm: string;

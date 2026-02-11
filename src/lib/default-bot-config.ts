@@ -38,6 +38,13 @@ export const DEFAULT_BOT_CONFIG: Omit<BotConfig, "id" | "createdAt" | "updatedAt
     not_interested: ["not interested", "no thanks", "don't want", "not for me"],
     who_runs: ["who runs", "who started", "founder", "avinash", "about company"],
   },
+  contextVariables: {
+    agentName: "Priya",
+    companyName: "FutureWorks AI",
+    eventName: "AI Masterclass",
+    eventHost: "Avinash",
+    location: "Hyderabad",
+  },
   qualificationCriteria: {
     hot: "Working professional with clear pain points OR business owner, shows urgency, ready to invest",
     warm: "Interested in upskilling but no clear urgency/timeline",

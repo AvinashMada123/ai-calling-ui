@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { adminDb } from "@/lib/firebase-admin";
 
-const DEFAULT_CALL_SERVER_URL =
-  process.env.CALL_SERVER_URL ||
-  "http://34.93.142.172:3001/call/conversational";
+const DEFAULT_WEBHOOK_URL =
+  process.env.N8N_WEBHOOK_URL ||
+  "https://n8n.srv1100770.hstgr.cloud/webhook/start-call";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformBotConfig(config: any) {
@@ -32,26 +32,21 @@ export async function POST(request: NextRequest) {
     const { payload } = body;
     const orgId = authUser?.orgId || "";
 
-    // Determine the app's public URL for callbacks
-    const appUrl = process.env.NEXT_PUBLIC_APP_URL
-      || request.headers.get("origin")
-      || "https://wavelength-flax.vercel.app";
-
-    // Get org-specific call server URL from Firestore (or use default)
-    let callServerUrl = DEFAULT_CALL_SERVER_URL;
+    // Get org webhook URL from Firestore (or use default)
+    let webhookUrl = DEFAULT_WEBHOOK_URL;
     if (orgId) {
       const orgDoc = await adminDb.collection("organizations").doc(orgId).get();
       if (orgDoc.exists) {
         const orgWebhook = orgDoc.data()?.webhookUrl;
-        if (orgWebhook) callServerUrl = orgWebhook;
+        if (orgWebhook) webhookUrl = orgWebhook;
       }
     }
 
     // Resolve bot config from Firestore
     let botConfigPayload = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let configDoc: any = null;
     if (orgId) {
-      let configDoc = null;
-
       // Try specific config if botConfigId provided
       if (payload.botConfigId) {
         const snap = await adminDb
@@ -77,35 +72,36 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build context from payload fields (matches call server's expected format)
+    // Build context: payload fields override bot config context variables
+    const ctx = configDoc?.contextVariables || {};
     const context = {
       customer_name: payload.contactName || "Customer",
-      agent_name: payload.agentName || "Agent",
-      company_name: payload.companyName || "",
-      event_host: payload.eventHost || "",
-      location: payload.location || "",
+      agent_name: payload.agentName || ctx.agentName || "Agent",
+      company_name: payload.companyName || ctx.companyName || "",
+      event_name: payload.eventName || ctx.eventName || "",
+      event_host: payload.eventHost || ctx.eventHost || "",
+      location: payload.location || ctx.location || "",
     };
 
-    // Build the call server payload
+    // Build enriched payload — bot config fields + context + original fields
     const { botConfigId: _removed, ...payloadWithoutBotConfigId } = payload;
-    const callServerPayload = {
+    const enrichedPayload = {
       ...payloadWithoutBotConfigId,
       orgId,
       context,
-      callEndWebhookUrl: `${appUrl}/api/call-ended`,
       ...botConfigPayload,
     };
 
-    console.log("[API /api/call] Call server URL:", callServerUrl);
-    console.log("[API /api/call] Payload keys:", Object.keys(callServerPayload));
+    console.log("[API /api/call] Webhook URL:", webhookUrl);
+    console.log("[API /api/call] Payload keys:", Object.keys(enrichedPayload));
 
-    const response = await fetch(callServerUrl, {
+    const response = await fetch(webhookUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(callServerPayload),
+      body: JSON.stringify(enrichedPayload),
     });
 
-    console.log("[API /api/call] Call server response status:", response.status);
+    console.log("[API /api/call] Webhook response status:", response.status);
 
     const responseText = await response.text();
     let data;
@@ -114,7 +110,7 @@ export async function POST(request: NextRequest) {
     } catch {
       console.error("[API /api/call] Non-JSON response:", response.status, responseText.slice(0, 500));
       return NextResponse.json(
-        { success: false, call_uuid: "", message: `Call server returned ${response.status}: ${responseText.slice(0, 200) || "(empty body)"}` },
+        { success: false, call_uuid: "", message: `Webhook returned ${response.status}: ${responseText.slice(0, 200) || "(empty body)"}` },
         { status: 502 }
       );
     }
