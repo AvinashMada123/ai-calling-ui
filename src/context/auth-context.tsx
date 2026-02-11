@@ -118,6 +118,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     initialized: false,
   });
 
+  // Flag to skip onAuthStateChanged fetch when signIn/signUp already handled it
+  const handledByAction = { current: false };
+
   const refreshProfile = useCallback(async () => {
     if (!state.user) return;
     const init = await fetchInit(state.user);
@@ -133,6 +136,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        // Skip if signIn/signUp already fetched data and set state
+        if (handledByAction.current) {
+          handledByAction.current = false;
+          return;
+        }
+
         // Instantly render from cache if available — no server round-trip
         const cached = getCachedInit();
         if (cached && cached.profile?.uid === user.uid) {
@@ -182,20 +191,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { user } = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await user.getIdToken();
 
-      // Server sets session cookie and returns profile
-      const res = await fetch("/api/auth/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken }),
-      });
+      // Run session cookie + data fetch in parallel
+      const [loginRes, init] = await Promise.all([
+        fetch("/api/auth/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken }),
+        }),
+        fetchInit(user),
+      ]);
 
-      if (!res.ok) {
-        const data = await res.json();
+      if (!loginRes.ok) {
+        const data = await loginRes.json();
         throw new Error(data.message || "Login failed");
       }
 
-      // Fetch all data in one shot
-      const init = await fetchInit(user);
+      // Mark so onAuthStateChanged skips its own fetch
+      handledByAction.current = true;
+
       if (init) {
         setState({
           user,
@@ -205,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           initialized: true,
         });
       } else {
-        const data = await res.json();
+        const data = await loginRes.json();
         setState({ user, userProfile: data.profile || null, initialData: null, loading: false, initialized: true });
       }
     } catch (err) {
@@ -244,6 +257,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const data = await res.json();
         const profile = data.profile || null;
+        handledByAction.current = true;
         setCachedInit(profile ? { profile, settings: {}, leads: [], calls: [] } : null);
         setState({
           user,
@@ -290,6 +304,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Fetch all data for the org being joined
         const init = await fetchInit(user);
+        handledByAction.current = true;
         if (init) {
           setState({
             user,
