@@ -94,7 +94,8 @@ export async function POST(request: NextRequest) {
     };
 
     console.log("[API /api/call] Webhook URL:", webhookUrl);
-    console.log("[API /api/call] Payload keys:", Object.keys(enrichedPayload));
+    console.log("[API /api/call] Context:", JSON.stringify(context));
+    console.log("[API /api/call] Bot config found:", !!configDoc, "contextVars:", JSON.stringify(ctx));
 
     const response = await fetch(webhookUrl, {
       method: "POST",
