@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Users,
@@ -12,13 +12,9 @@ import {
   User,
 } from "lucide-react";
 import { toast } from "sonner";
-import { doc, setDoc } from "firebase/firestore";
 
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { RoleGuard } from "@/components/auth/role-guard";
-import { getOrgUsers } from "@/lib/firestore/users";
-import { getOrganization } from "@/lib/firestore/organizations";
 import type { UserProfile } from "@/types/user";
 
 import { Button } from "@/components/ui/button";
@@ -83,7 +79,7 @@ const statusConfig: Record<string, string> = {
 };
 
 function TeamContent() {
-  const { orgId, user } = useAuth();
+  const { orgId, user, initialData } = useAuth();
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -91,27 +87,38 @@ function TeamContent() {
   const [inviteRole, setInviteRole] = useState<"client_admin" | "client_user">("client_user");
   const [inviting, setInviting] = useState(false);
 
+  // Use initialData from auth context for instant render
   useEffect(() => {
     if (!orgId) return;
-    loadMembers();
+    if (initialData?.team) {
+      setMembers(initialData.team as UserProfile[]);
+      setLoading(false);
+    } else {
+      loadMembers();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, initialData]);
 
-  async function loadMembers() {
-    if (!orgId) return;
+  const loadMembers = useCallback(async () => {
+    if (!orgId || !user) return;
     try {
       setLoading(true);
-      const users = await getOrgUsers(orgId);
-      setMembers(users);
-    } catch (err) {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/data/team", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error("Failed");
+      const data = await res.json();
+      setMembers(data.members);
+    } catch {
       toast.error("Failed to load team members");
     } finally {
       setLoading(false);
     }
-  }
+  }, [orgId, user]);
 
   async function handleInvite() {
-    if (!orgId || !user) return;
+    if (!user) return;
     if (!inviteEmail.trim()) {
       toast.error("Please enter an email address");
       return;
@@ -120,30 +127,27 @@ function TeamContent() {
     try {
       setInviting(true);
 
-      // Get org name for invite
-      const org = await getOrganization(orgId);
-      const orgName = org?.name ?? "Organization";
-
-      const inviteId = crypto.randomUUID();
-      const now = new Date();
-      const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
-
-      await setDoc(doc(db, "invites", inviteId), {
-        email: inviteEmail.trim().toLowerCase(),
-        orgId,
-        orgName,
-        role: inviteRole,
-        invitedBy: user.uid,
-        status: "pending",
-        createdAt: now.toISOString(),
-        expiresAt: expiresAt.toISOString(),
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/data/team", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "invite",
+          email: inviteEmail,
+          role: inviteRole,
+        }),
       });
+
+      if (!res.ok) throw new Error("Failed");
 
       toast.success(`Invite sent to ${inviteEmail}`);
       setInviteEmail("");
       setInviteRole("client_user");
       setInviteOpen(false);
-    } catch (err) {
+    } catch {
       toast.error("Failed to send invite");
     } finally {
       setInviting(false);

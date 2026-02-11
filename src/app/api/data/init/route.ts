@@ -19,18 +19,22 @@ export async function GET(request: NextRequest) {
     const profile = { uid: decoded.uid, ...userDoc.data() };
     const orgId = userDoc.data()!.orgId as string;
 
-    // Fetch org settings, leads, and calls in parallel
-    const [orgDoc, leadsSnap, callsSnap] = await Promise.all([
+    // Fetch org settings, leads, calls, bot configs, and team in parallel
+    const [orgDoc, leadsSnap, callsSnap, botConfigsSnap, teamSnap] = await Promise.all([
       db.collection("organizations").doc(orgId).get(),
       db.collection("organizations").doc(orgId).collection("leads").orderBy("createdAt", "desc").get(),
       db.collection("organizations").doc(orgId).collection("calls").orderBy("initiatedAt", "desc").get(),
+      db.collection("organizations").doc(orgId).collection("botConfigs").get(),
+      db.collection("users").where("orgId", "==", orgId).get(),
     ]);
 
     const settings = orgDoc.exists ? orgDoc.data()?.settings || {} : {};
     const leads = leadsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
     const calls = callsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const botConfigs = botConfigsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const team = teamSnap.docs.map((d) => ({ uid: d.id, ...d.data() }));
 
-    return NextResponse.json({ profile, settings, leads, calls });
+    return NextResponse.json({ profile, settings, leads, calls, botConfigs, team });
   } catch (error) {
     console.error("[Init API] Error:", error);
     return NextResponse.json({ error: "Failed to load" }, { status: 500 });

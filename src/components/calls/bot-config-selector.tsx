@@ -12,7 +12,6 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
-import { getBotConfigs } from "@/lib/firestore/bot-config";
 import type { BotConfig } from "@/types/bot-config";
 
 interface BotConfigSelectorProps {
@@ -21,7 +20,7 @@ interface BotConfigSelectorProps {
 }
 
 export function BotConfigSelector({ value, onChange }: BotConfigSelectorProps) {
-  const { orgId } = useAuth();
+  const { orgId, user, initialData } = useAuth();
   const [configs, setConfigs] = useState<BotConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -29,12 +28,31 @@ export function BotConfigSelector({ value, onChange }: BotConfigSelectorProps) {
     if (!orgId) return;
     let cancelled = false;
 
+    // Use initialData from auth context for instant render
+    if (initialData?.botConfigs) {
+      const data = initialData.botConfigs as BotConfig[];
+      setConfigs(data);
+      if (!value) {
+        const active = data.find((c) => c.isActive);
+        if (active) onChange(active.id);
+      }
+      setLoading(false);
+      return;
+    }
+
+    // Fallback: fetch from server API
     async function load() {
+      if (!user) return;
       try {
-        const data = await getBotConfigs(orgId!);
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/data/bot-configs", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (!res.ok) throw new Error("Failed");
+        const json = await res.json();
         if (cancelled) return;
+        const data = json.configs as BotConfig[];
         setConfigs(data);
-        // Auto-select active config if no value is set
         if (!value) {
           const active = data.find((c) => c.isActive);
           if (active) onChange(active.id);
@@ -48,7 +66,7 @@ export function BotConfigSelector({ value, onChange }: BotConfigSelectorProps) {
 
     load();
     return () => { cancelled = true; };
-  }, [orgId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [orgId, initialData]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) {
     return (

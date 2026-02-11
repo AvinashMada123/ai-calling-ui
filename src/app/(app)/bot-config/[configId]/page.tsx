@@ -15,7 +15,6 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import { getBotConfigs, updateBotConfig } from "@/lib/firestore/bot-config";
 import type { BotConfig, BotQuestion, BotObjection } from "@/types/bot-config";
 
 import { Button } from "@/components/ui/button";
@@ -27,10 +26,28 @@ import { Label } from "@/components/ui/label";
 
 type TabId = "prompt" | "questions" | "objections";
 
+async function apiBotConfigs(
+  user: { getIdToken: () => Promise<string> },
+  method: "GET" | "POST",
+  body?: Record<string, unknown>
+) {
+  const idToken = await user.getIdToken();
+  const res = await fetch("/api/data/bot-configs", {
+    method,
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!res.ok) throw new Error("Request failed");
+  return res.json();
+}
+
 export default function BotConfigEditorPage() {
   const params = useParams();
   const router = useRouter();
-  const { orgId } = useAuth();
+  const { orgId, user, initialData } = useAuth();
 
   const configId = params.configId as string;
 
@@ -45,35 +62,50 @@ export default function BotConfigEditorPage() {
   const [questions, setQuestions] = useState<BotQuestion[]>([]);
   const [objections, setObjections] = useState<BotObjection[]>([]);
 
-  const loadConfig = useCallback(async () => {
+  const populateConfig = useCallback((found: BotConfig) => {
+    setConfig(found);
+    setName(found.name);
+    setPrompt(found.prompt);
+    setQuestions([...found.questions].sort((a, b) => a.order - b.order));
+    setObjections([...found.objections]);
+    setLoading(false);
+  }, []);
+
+  // Try initialData first, then fall back to API
+  useEffect(() => {
     if (!orgId) return;
-    try {
-      setLoading(true);
-      const configs = await getBotConfigs(orgId);
-      const found = configs.find((c) => c.id === configId);
-      if (!found) {
-        toast.error("Configuration not found");
-        router.push("/bot-config");
+
+    if (initialData?.botConfigs) {
+      const found = (initialData.botConfigs as BotConfig[]).find((c) => c.id === configId);
+      if (found) {
+        populateConfig(found);
         return;
       }
-      setConfig(found);
-      setName(found.name);
-      setPrompt(found.prompt);
-      setQuestions([...found.questions].sort((a, b) => a.order - b.order));
-      setObjections([...found.objections]);
-    } catch (err) {
-      toast.error("Failed to load configuration");
-    } finally {
-      setLoading(false);
     }
-  }, [orgId, configId, router]);
 
-  useEffect(() => {
-    loadConfig();
-  }, [loadConfig]);
+    // Fallback: fetch from server
+    if (!user) return;
+    (async () => {
+      try {
+        setLoading(true);
+        const data = await apiBotConfigs(user, "GET");
+        const found = (data.configs as BotConfig[]).find((c) => c.id === configId);
+        if (!found) {
+          toast.error("Configuration not found");
+          router.push("/bot-config");
+          return;
+        }
+        populateConfig(found);
+      } catch {
+        toast.error("Failed to load configuration");
+        setLoading(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgId, configId, initialData]);
 
   async function handleSave() {
-    if (!orgId || !config) return;
+    if (!user || !config) return;
     try {
       setSaving(true);
 
@@ -83,15 +115,19 @@ export default function BotConfigEditorPage() {
         objectionKeywords[obj.key] = obj.keywords;
       }
 
-      await updateBotConfig(orgId, configId, {
-        name,
-        prompt,
-        questions,
-        objections,
-        objectionKeywords,
+      await apiBotConfigs(user, "POST", {
+        action: "update",
+        configId,
+        updates: {
+          name,
+          prompt,
+          questions,
+          objections,
+          objectionKeywords,
+        },
       });
       toast.success("Configuration saved successfully");
-    } catch (err) {
+    } catch {
       toast.error("Failed to save configuration");
     } finally {
       setSaving(false);

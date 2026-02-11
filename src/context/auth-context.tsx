@@ -24,6 +24,8 @@ export interface InitialData {
   settings: Record<string, any>;
   leads: Record<string, any>[];
   calls: Record<string, any>[];
+  botConfigs: Record<string, any>[];
+  team: Record<string, any>[];
 }
 
 interface AuthState {
@@ -61,6 +63,8 @@ interface CachedInit {
   settings: Record<string, any>;
   leads: Record<string, any>[];
   calls: Record<string, any>[];
+  botConfigs: Record<string, any>[];
+  team: Record<string, any>[];
 }
 
 function getCachedInit(): CachedInit | null {
@@ -97,6 +101,8 @@ async function fetchInit(user: User): Promise<CachedInit | null> {
       settings: data.settings || {},
       leads: data.leads || [],
       calls: data.calls || [],
+      botConfigs: data.botConfigs || [],
+      team: data.team || [],
     };
     setCachedInit(result);
     return result;
@@ -128,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setState((prev) => ({
         ...prev,
         userProfile: init.profile,
-        initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+        initialData: { settings: init.settings, leads: init.leads, calls: init.calls, botConfigs: init.botConfigs, team: init.team },
       }));
     }
   }, [state.user]);
@@ -148,7 +154,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState({
             user,
             userProfile: cached.profile,
-            initialData: { settings: cached.settings, leads: cached.leads, calls: cached.calls },
+            initialData: { settings: cached.settings, leads: cached.leads, calls: cached.calls, botConfigs: cached.botConfigs, team: cached.team },
             loading: false,
             initialized: true,
           });
@@ -158,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               setState((prev) => ({
                 ...prev,
                 userProfile: fresh.profile,
-                initialData: { settings: fresh.settings, leads: fresh.leads, calls: fresh.calls },
+                initialData: { settings: fresh.settings, leads: fresh.leads, calls: fresh.calls, botConfigs: fresh.botConfigs, team: fresh.team },
               }));
             }
           });
@@ -169,7 +175,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setState({
               user,
               userProfile: init.profile,
-              initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+              initialData: { settings: init.settings, leads: init.leads, calls: init.calls, botConfigs: init.botConfigs, team: init.team },
               loading: false,
               initialized: true,
             });
@@ -212,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState({
           user,
           userProfile: init.profile,
-          initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+          initialData: { settings: init.settings, leads: init.leads, calls: init.calls, botConfigs: init.botConfigs, team: init.team },
           loading: false,
           initialized: true,
         });
@@ -258,11 +264,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const data = await res.json();
         const profile = data.profile || null;
-        setCachedInit(profile ? { profile, settings: {}, leads: [], calls: [] } : null);
+        setCachedInit(profile ? { profile, settings: {}, leads: [], calls: [], botConfigs: [], team: [] } : null);
         setState({
           user,
           userProfile: profile,
-          initialData: { settings: {}, leads: [], calls: [] },
+          initialData: { settings: {}, leads: [], calls: [], botConfigs: [], team: [] },
           loading: false,
           initialized: true,
         });
@@ -310,7 +316,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState({
             user,
             userProfile: init.profile,
-            initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+            initialData: { settings: init.settings, leads: init.leads, calls: init.calls, botConfigs: init.botConfigs, team: init.team },
             loading: false,
             initialized: true,
           });

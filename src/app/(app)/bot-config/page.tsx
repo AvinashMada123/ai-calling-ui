@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { Plus, Pencil, Trash2, Zap, Bot, Loader2, MessageSquare } from "lucide-react";
@@ -8,13 +8,7 @@ import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
 import { RoleGuard } from "@/components/auth/role-guard";
-import {
-  getBotConfigs,
-  deleteBotConfig,
-  setActiveBotConfig,
-  createBotConfig,
-  DEFAULT_BOT_CONFIG,
-} from "@/lib/firestore/bot-config";
+import { DEFAULT_BOT_CONFIG } from "@/lib/default-bot-config";
 import type { BotConfig } from "@/types/bot-config";
 
 import { Button } from "@/components/ui/button";
@@ -29,56 +23,80 @@ export default function BotConfigPage() {
   );
 }
 
+async function apiBotConfigs(
+  user: { getIdToken: () => Promise<string> },
+  method: "GET" | "POST",
+  body?: Record<string, unknown>
+) {
+  const idToken = await user.getIdToken();
+  const res = await fetch("/api/data/bot-configs", {
+    method,
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      ...(body ? { "Content-Type": "application/json" } : {}),
+    },
+    ...(body ? { body: JSON.stringify(body) } : {}),
+  });
+  if (!res.ok) throw new Error("Request failed");
+  return res.json();
+}
+
 function BotConfigContent() {
   const router = useRouter();
-  const { orgId, user } = useAuth();
+  const { orgId, user, initialData } = useAuth();
   const [configs, setConfigs] = useState<BotConfig[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Use initialData from auth context for instant render
   useEffect(() => {
     if (!orgId) return;
-    loadConfigs();
+    if (initialData?.botConfigs) {
+      setConfigs(initialData.botConfigs as BotConfig[]);
+      setLoading(false);
+    } else {
+      loadConfigs();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orgId]);
+  }, [orgId, initialData]);
 
-  async function loadConfigs() {
-    if (!orgId) return;
+  const loadConfigs = useCallback(async () => {
+    if (!orgId || !user) return;
     try {
       setLoading(true);
-      const data = await getBotConfigs(orgId);
-      setConfigs(data);
-    } catch (err) {
+      const data = await apiBotConfigs(user, "GET");
+      setConfigs(data.configs);
+    } catch {
       toast.error("Failed to load bot configurations");
     } finally {
       setLoading(false);
     }
-  }
+  }, [orgId, user]);
 
   async function handleDelete(configId: string) {
-    if (!orgId) return;
+    if (!user) return;
     if (!confirm("Are you sure you want to delete this configuration?")) return;
     try {
-      await deleteBotConfig(orgId, configId);
+      await apiBotConfigs(user, "POST", { action: "delete", configId });
       toast.success("Configuration deleted");
       loadConfigs();
-    } catch (err) {
+    } catch {
       toast.error("Failed to delete configuration");
     }
   }
 
   async function handleSetActive(configId: string) {
-    if (!orgId) return;
+    if (!user) return;
     try {
-      await setActiveBotConfig(orgId, configId);
+      await apiBotConfigs(user, "POST", { action: "setActive", configId });
       toast.success("Active configuration updated");
       loadConfigs();
-    } catch (err) {
+    } catch {
       toast.error("Failed to set active configuration");
     }
   }
 
   async function handleCreateNew() {
-    if (!orgId || !user) return;
+    if (!user) return;
     try {
       const id = crypto.randomUUID();
       const now = new Date().toISOString();
@@ -91,10 +109,10 @@ function BotConfigContent() {
         updatedAt: now,
         createdBy: user.uid,
       };
-      await createBotConfig(orgId, newConfig);
+      await apiBotConfigs(user, "POST", { action: "create", config: newConfig });
       toast.success("New configuration created");
       router.push(`/bot-config/${id}`);
-    } catch (err) {
+    } catch {
       toast.error("Failed to create configuration");
     }
   }
