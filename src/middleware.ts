@@ -5,6 +5,7 @@ const SESSION_COOKIE_NAME = "__session";
 const PUBLIC_PATHS = [
   "/login",
   "/signup",
+  "/reset-password",
   "/invite",
   "/api/auth",
   "/api/call-ended",
