@@ -8,14 +8,17 @@ export async function POST(request: NextRequest) {
   try {
     const data = await request.json();
 
-    console.log("[API /api/call-ended] Received webhook from n8n");
+    // orgId can come from: (1) query param in the webhook URL, (2) body payload
+    const queryOrgId = request.nextUrl.searchParams.get("orgId") || "";
+
+    console.log("[API /api/call-ended] Received call-ended webhook");
     console.log("[API /api/call-ended] call_uuid:", data.call_uuid);
     console.log("[API /api/call-ended] contact_name:", data.contact_name);
     console.log("[API /api/call-ended] duration_seconds:", data.duration_seconds);
     console.log("[API /api/call-ended] interest_level:", data.interest_level);
     console.log("[API /api/call-ended] completion_rate:", data.completion_rate);
     console.log("[API /api/call-ended] call_summary:", data.call_summary?.slice(0, 100));
-    console.log("[API /api/call-ended] orgId:", data.orgId);
+    console.log("[API /api/call-ended] orgId (query):", queryOrgId, "orgId (body):", data.orgId);
 
     // Qualify lead with Gemini if we have question pairs
     if (data.question_pairs && data.question_pairs.length > 0) {
@@ -32,8 +35,8 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Extract orgId from payload (passed through from call initiation)
-    const orgId: string = data.orgId || "";
+    // Extract orgId: prefer query param (reliable), fall back to body (if call server passes it through)
+    const orgId: string = queryOrgId || data.orgId || "";
 
     // Update Firestore if orgId is present
     if (orgId) {

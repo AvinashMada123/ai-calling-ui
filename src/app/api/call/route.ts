@@ -78,10 +78,12 @@ export async function POST(request: NextRequest) {
       location: ctx.location || payload.location || "",
     };
 
-    // Determine the public URL for the call-ended callback
+    // Determine the public URL for the call-ended callback.
+    // Encode orgId in the URL so we don't depend on the call server passing it
+    // through in the callback body (most call servers only return call data).
     const host = request.headers.get("host") || "localhost:3000";
     const protocol = host.includes("localhost") ? "http" : "https";
-    const callEndWebhookUrl = `${protocol}://${host}/api/call-ended`;
+    const callEndWebhookUrl = `${protocol}://${host}/api/call-ended${orgId ? `?orgId=${orgId}` : ""}`;
 
     // Build payload matching the exact format the call server expects.
     // orgId is included so the call server can pass it back in the call-ended
