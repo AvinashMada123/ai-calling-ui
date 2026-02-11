@@ -8,6 +8,7 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/invite",
   "/api/auth",
+  "/api/data",
   "/api/call-ended",
   "/api/bot-config",
   "/api/call-updates",
