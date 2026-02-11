@@ -13,6 +13,8 @@ import {
   Shield,
   ShieldCheck,
   User,
+  Pencil,
+  UserPlus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -26,6 +28,8 @@ import type { UsageRecord } from "@/types/billing";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -34,6 +38,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const planColors: Record<string, string> = {
   free: "bg-zinc-500/15 text-zinc-600 border-zinc-500/20",
@@ -69,13 +88,25 @@ const roleConfig: Record<string, { label: string; icon: typeof Shield; color: st
 export default function AdminClientDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const targetOrgId = params.orgId as string;
 
   const [org, setOrg] = useState<Organization | null>(null);
   const [usage, setUsage] = useState<UsageRecord | null>(null);
   const [members, setMembers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Edit org dialog
+  const [editOpen, setEditOpen] = useState(false);
+  const [editPlan, setEditPlan] = useState("");
+  const [editStatus, setEditStatus] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  // Invite dialog
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"client_admin" | "client_user">("client_user");
+  const [inviting, setInviting] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -95,7 +126,7 @@ export default function AdminClientDetailPage() {
       setOrg(orgData);
       setUsage(usageData);
       setMembers(usersData);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load organization details");
     } finally {
       setLoading(false);
@@ -106,6 +137,69 @@ export default function AdminClientDetailPage() {
     if (!isSuperAdmin) return;
     loadData();
   }, [isSuperAdmin, loadData]);
+
+  async function handleSaveOrg() {
+    try {
+      setSaving(true);
+      const idToken = await user!.getIdToken();
+      const res = await fetch("/api/admin/organizations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "update",
+          orgId: targetOrgId,
+          updates: { plan: editPlan, status: editStatus },
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      toast.success("Organization updated");
+      setEditOpen(false);
+      loadData();
+    } catch {
+      toast.error("Failed to update organization");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleInvite() {
+    if (!inviteEmail.trim()) {
+      toast.error("Please enter an email address");
+      return;
+    }
+    try {
+      setInviting(true);
+      const idToken = await user!.getIdToken();
+      const res = await fetch("/api/admin/organizations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "invite",
+          orgId: targetOrgId,
+          email: inviteEmail.trim(),
+          role: inviteRole,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed to invite");
+      const data = await res.json();
+      toast.success(`Invite sent to ${inviteEmail}`, {
+        description: `Invite link: ${window.location.origin}/invite/${data.inviteId}`,
+      });
+      setInviteOpen(false);
+      setInviteEmail("");
+      setInviteRole("client_user");
+    } catch {
+      toast.error("Failed to send invite");
+    } finally {
+      setInviting(false);
+    }
+  }
 
   if (loading) {
     return (
@@ -124,10 +218,21 @@ export default function AdminClientDetailPage() {
         <Button variant="ghost" size="icon" onClick={() => router.push("/admin/clients")}>
           <ArrowLeft className="size-5" />
         </Button>
-        <div>
+        <div className="flex-1">
           <h1 className="text-3xl font-bold tracking-tight">{org.name}</h1>
           <p className="text-muted-foreground">Organization details and usage</p>
         </div>
+        <Button
+          variant="outline"
+          onClick={() => {
+            setEditPlan(org.plan);
+            setEditStatus(org.status);
+            setEditOpen(true);
+          }}
+        >
+          <Pencil className="size-4" />
+          Edit
+        </Button>
       </div>
 
       {/* Org Info Card */}
@@ -221,9 +326,15 @@ export default function AdminClientDetailPage() {
       >
         <Card>
           <CardHeader>
-            <div className="flex items-center gap-2">
-              <Users className="size-5 text-muted-foreground" />
-              <CardTitle>Team Members ({members.length})</CardTitle>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Users className="size-5 text-muted-foreground" />
+                <CardTitle>Team Members ({members.length})</CardTitle>
+              </div>
+              <Button size="sm" onClick={() => setInviteOpen(true)}>
+                <UserPlus className="size-4" />
+                Invite
+              </Button>
             </div>
           </CardHeader>
           <CardContent>
@@ -287,6 +398,101 @@ export default function AdminClientDetailPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Edit Organization Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Organization</DialogTitle>
+            <DialogDescription>
+              Update plan and status for {org.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label>Plan</Label>
+              <Select value={editPlan} onValueChange={setEditPlan}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Free</SelectItem>
+                  <SelectItem value="starter">Starter</SelectItem>
+                  <SelectItem value="pro">Pro</SelectItem>
+                  <SelectItem value="enterprise">Enterprise</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label>Status</Label>
+              <Select value={editStatus} onValueChange={setEditStatus}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                  <SelectItem value="trial">Trial</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveOrg} disabled={saving}>
+              {saving && <Loader2 className="size-4 animate-spin" />}
+              Save Changes
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite User Dialog */}
+      <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite Team Member</DialogTitle>
+            <DialogDescription>
+              Send an invite to join {org.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="invite-email">Email Address</Label>
+              <Input
+                id="invite-email"
+                type="email"
+                placeholder="user@example.com"
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Role</Label>
+              <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as "client_admin" | "client_user")}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="client_admin">Admin (full management access)</SelectItem>
+                  <SelectItem value="client_user">User (standard access)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInviteOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleInvite} disabled={inviting}>
+              {inviting && <Loader2 className="size-4 animate-spin" />}
+              Send Invite
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

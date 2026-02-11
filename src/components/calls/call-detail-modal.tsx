@@ -87,15 +87,15 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
-        <DialogHeader className="px-6 pt-6 pb-4">
+        <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <DialogTitle className="text-xl">{call.request.contactName}</DialogTitle>
+            <div className="min-w-0">
+              <DialogTitle className="text-xl truncate">{call.request.contactName}</DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 {formatPhoneNumber(call.request.phoneNumber)}
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
               {data?.qualification && (
                 <QualificationBadge
                   level={data.qualification.level}
@@ -122,13 +122,13 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
 
         {data ? (
           <>
-            <div className="flex border-b px-6">
+            <div className="flex border-b px-6 overflow-x-auto shrink-0">
               {tabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
                   className={cn(
-                    "relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors",
+                    "relative flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium transition-colors whitespace-nowrap",
                     activeTab === tab.id
                       ? "text-primary"
                       : "text-muted-foreground hover:text-foreground"
@@ -146,7 +146,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
               ))}
             </div>
 
-            <ScrollArea className="flex-1 min-h-0 max-h-[380px]">
+            <ScrollArea className="flex-1 min-h-0">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeTab}

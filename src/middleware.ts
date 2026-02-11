@@ -9,6 +9,7 @@ const PUBLIC_PATHS = [
   "/invite",
   "/api/auth",
   "/api/data",
+  "/api/admin",
   "/api/call-ended",
   "/api/bot-config",
   "/api/call-updates",

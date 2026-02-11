@@ -100,6 +100,7 @@ export async function POST(request: NextRequest) {
     };
 
     console.log("[API /api/call] Call server URL:", CALL_SERVER_URL);
+    console.log("[API /api/call] Prompt being sent:", callServerPayload.prompt ?? "(no prompt resolved)");
     console.log("[API /api/call] Full payload:", JSON.stringify(callServerPayload, null, 2));
 
     const response = await fetch(CALL_SERVER_URL, {

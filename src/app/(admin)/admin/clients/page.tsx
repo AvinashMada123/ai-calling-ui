@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { Building2, Search, Loader2, ExternalLink } from "lucide-react";
+import { Building2, Search, Loader2, ExternalLink, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Table,
   TableBody,
@@ -22,6 +23,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const planColors: Record<string, string> = {
   free: "bg-zinc-500/15 text-zinc-600 border-zinc-500/20",
@@ -38,10 +54,17 @@ const statusColors: Record<string, string> = {
 
 export default function AdminClientsPage() {
   const router = useRouter();
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+
+  // Create org dialog state
+  const [createOpen, setCreateOpen] = useState(false);
+  const [newOrgName, setNewOrgName] = useState("");
+  const [newOrgPlan, setNewOrgPlan] = useState("free");
+  const [newOrgEmail, setNewOrgEmail] = useState("");
+  const [creating, setCreating] = useState(false);
 
   useEffect(() => {
     if (!isSuperAdmin) return;
@@ -53,10 +76,54 @@ export default function AdminClientsPage() {
       setLoading(true);
       const data = await getAllOrganizations();
       setOrgs(data);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load organizations");
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function handleCreateOrg() {
+    if (!newOrgName.trim()) {
+      toast.error("Organization name is required");
+      return;
+    }
+    try {
+      setCreating(true);
+      const idToken = await user!.getIdToken();
+      const res = await fetch("/api/admin/organizations", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "create",
+          orgName: newOrgName.trim(),
+          plan: newOrgPlan,
+          adminEmail: newOrgEmail.trim() || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to create organization");
+      }
+      const data = await res.json();
+      toast.success(`Organization "${newOrgName}" created`);
+      if (data.inviteId && newOrgEmail) {
+        toast.success(`Invite sent to ${newOrgEmail}`, {
+          description: `Invite link: ${window.location.origin}/invite/${data.inviteId}`,
+        });
+      }
+      setCreateOpen(false);
+      setNewOrgName("");
+      setNewOrgPlan("free");
+      setNewOrgEmail("");
+      loadOrgs();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to create organization");
+    } finally {
+      setCreating(false);
     }
   }
 
@@ -74,6 +141,10 @@ export default function AdminClientsPage() {
             View and manage all organizations on the platform
           </p>
         </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="size-4" />
+          Add Client
+        </Button>
       </div>
 
       <Card>
@@ -159,6 +230,65 @@ export default function AdminClientsPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Create Organization Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create New Organization</DialogTitle>
+            <DialogDescription>
+              Set up a new client organization. Optionally invite an admin.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-2">
+              <Label htmlFor="org-name">Organization Name</Label>
+              <Input
+                id="org-name"
+                placeholder="Acme Corp"
+                value={newOrgName}
+                onChange={(e) => setNewOrgName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Plan</Label>
+              <Select value={newOrgPlan} onValueChange={setNewOrgPlan}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="free">Free</SelectItem>
+                  <SelectItem value="starter">Starter</SelectItem>
+                  <SelectItem value="pro">Pro</SelectItem>
+                  <SelectItem value="enterprise">Enterprise</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="admin-email">Admin Email (optional)</Label>
+              <Input
+                id="admin-email"
+                type="email"
+                placeholder="admin@acmecorp.com"
+                value={newOrgEmail}
+                onChange={(e) => setNewOrgEmail(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                An invite link will be created. Share it with the recipient to let them sign up as the org admin.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreateOrg} disabled={creating}>
+              {creating && <Loader2 className="size-4 animate-spin" />}
+              Create Organization
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
