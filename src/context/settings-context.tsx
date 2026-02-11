@@ -62,7 +62,7 @@ const SettingsContext = createContext<{
 } | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const { user, userProfile } = useAuthContext();
+  const { user, userProfile, initialData } = useAuthContext();
   const orgId = userProfile?.orgId ?? null;
 
   const [state, baseDispatch] = useReducer(settingsReducer, {
@@ -75,38 +75,19 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return user.getIdToken();
   }, [user]);
 
-  // Load settings from server API when authenticated
+  // Use initialData from auth context (pre-fetched in single API call)
   useEffect(() => {
-    if (!orgId || !user) {
+    if (!orgId) {
       baseDispatch({ type: "SET_SETTINGS", payload: DEFAULT_SETTINGS });
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch("/api/data/settings", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!cancelled && res.ok) {
-          const data = await res.json();
-          const settings = data.settings || {};
-          baseDispatch({
-            type: "SET_SETTINGS",
-            payload: { ...DEFAULT_SETTINGS, ...settings },
-          });
-        } else if (!cancelled) {
-          baseDispatch({ type: "SET_SETTINGS", payload: DEFAULT_SETTINGS });
-        }
-      } catch (err) {
-        console.error("Failed to load settings:", err);
-        if (!cancelled) {
-          baseDispatch({ type: "SET_SETTINGS", payload: DEFAULT_SETTINGS });
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [orgId, user]);
+    if (initialData) {
+      baseDispatch({
+        type: "SET_SETTINGS",
+        payload: { ...DEFAULT_SETTINGS, ...initialData.settings },
+      });
+    }
+  }, [orgId, initialData]);
 
   // Enhanced dispatch that also persists via server API
   const dispatch: React.Dispatch<SettingsAction> = useCallback(

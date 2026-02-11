@@ -19,9 +19,17 @@ import {
 import { auth } from "@/lib/firebase";
 import type { UserProfile } from "@/types/user";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface InitialData {
+  settings: Record<string, any>;
+  leads: Record<string, any>[];
+  calls: Record<string, any>[];
+}
+
 interface AuthState {
   user: User | null;
   userProfile: UserProfile | null;
+  initialData: InitialData | null;
   loading: boolean;
   initialized: boolean;
 }
@@ -46,40 +54,52 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-const PROFILE_CACHE_KEY = "wl_profile";
+const INIT_CACHE_KEY = "wl_init";
 
-function getCachedProfile(): UserProfile | null {
+interface CachedInit {
+  profile: UserProfile;
+  settings: Record<string, any>;
+  leads: Record<string, any>[];
+  calls: Record<string, any>[];
+}
+
+function getCachedInit(): CachedInit | null {
   try {
-    const cached = sessionStorage.getItem(PROFILE_CACHE_KEY);
+    const cached = sessionStorage.getItem(INIT_CACHE_KEY);
     return cached ? JSON.parse(cached) : null;
   } catch {
     return null;
   }
 }
 
-function setCachedProfile(profile: UserProfile | null) {
+function setCachedInit(data: CachedInit | null) {
   try {
-    if (profile) {
-      sessionStorage.setItem(PROFILE_CACHE_KEY, JSON.stringify(profile));
+    if (data) {
+      sessionStorage.setItem(INIT_CACHE_KEY, JSON.stringify(data));
     } else {
-      sessionStorage.removeItem(PROFILE_CACHE_KEY);
+      sessionStorage.removeItem(INIT_CACHE_KEY);
     }
   } catch {
     // sessionStorage not available
   }
 }
 
-async function fetchUserProfile(user: User): Promise<UserProfile | null> {
+async function fetchInit(user: User): Promise<CachedInit | null> {
   try {
     const idToken = await user.getIdToken();
-    const res = await fetch("/api/auth/me", {
+    const res = await fetch("/api/data/init", {
       headers: { Authorization: `Bearer ${idToken}` },
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const profile = data.profile || null;
-    setCachedProfile(profile);
-    return profile;
+    const result: CachedInit = {
+      profile: data.profile,
+      settings: data.settings || {},
+      leads: data.leads || [],
+      calls: data.calls || [],
+    };
+    setCachedInit(result);
+    return result;
   } catch {
     return null;
   }
@@ -93,34 +113,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({
     user: null,
     userProfile: null,
+    initialData: null,
     loading: true,
     initialized: false,
   });
 
   const refreshProfile = useCallback(async () => {
     if (!state.user) return;
-    const profile = await fetchUserProfile(state.user);
-    setState((prev) => ({ ...prev, userProfile: profile }));
+    const init = await fetchInit(state.user);
+    if (init) {
+      setState((prev) => ({
+        ...prev,
+        userProfile: init.profile,
+        initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+      }));
+    }
   }, [state.user]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         // Instantly render from cache if available — no server round-trip
-        const cached = getCachedProfile();
-        if (cached && cached.uid === user.uid) {
-          setState({ user, userProfile: cached, loading: false, initialized: true });
+        const cached = getCachedInit();
+        if (cached && cached.profile?.uid === user.uid) {
+          setState({
+            user,
+            userProfile: cached.profile,
+            initialData: { settings: cached.settings, leads: cached.leads, calls: cached.calls },
+            loading: false,
+            initialized: true,
+          });
           // Silently refresh in background
-          fetchUserProfile(user).then((fresh) => {
-            if (fresh) setState((prev) => ({ ...prev, userProfile: fresh }));
+          fetchInit(user).then((fresh) => {
+            if (fresh) {
+              setState((prev) => ({
+                ...prev,
+                userProfile: fresh.profile,
+                initialData: { settings: fresh.settings, leads: fresh.leads, calls: fresh.calls },
+              }));
+            }
           });
         } else {
-          const profile = await fetchUserProfile(user);
-          setState({ user, userProfile: profile, loading: false, initialized: true });
+          // No cache — single API call for everything
+          const init = await fetchInit(user);
+          if (init) {
+            setState({
+              user,
+              userProfile: init.profile,
+              initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+              loading: false,
+              initialized: true,
+            });
+          } else {
+            setState({ user, userProfile: null, initialData: null, loading: false, initialized: true });
+          }
         }
       } else {
-        setCachedProfile(null);
-        setState({ user: null, userProfile: null, loading: false, initialized: true });
+        setCachedInit(null);
+        setState({ user: null, userProfile: null, initialData: null, loading: false, initialized: true });
       }
     });
     return unsubscribe;
@@ -132,7 +182,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { user } = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await user.getIdToken();
 
-      // Server sets session cookie and returns profile — single round-trip
+      // Server sets session cookie and returns profile
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -144,10 +194,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(data.message || "Login failed");
       }
 
-      const data = await res.json();
-      const profile = data.profile || null;
-      setCachedProfile(profile);
-      setState({ user, userProfile: profile, loading: false, initialized: true });
+      // Fetch all data in one shot
+      const init = await fetchInit(user);
+      if (init) {
+        setState({
+          user,
+          userProfile: init.profile,
+          initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+          loading: false,
+          initialized: true,
+        });
+      } else {
+        const data = await res.json();
+        setState({ user, userProfile: data.profile || null, initialData: null, loading: false, initialized: true });
+      }
     } catch (err) {
       setState((prev) => ({ ...prev, loading: false }));
       throw err;
@@ -184,8 +244,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const data = await res.json();
         const profile = data.profile || null;
-        setCachedProfile(profile);
-        setState({ user, userProfile: profile, loading: false, initialized: true });
+        setCachedInit(profile ? { profile, settings: {}, leads: [], calls: [] } : null);
+        setState({
+          user,
+          userProfile: profile,
+          initialData: { settings: {}, leads: [], calls: [] },
+          loading: false,
+          initialized: true,
+        });
       } catch (err) {
         setState((prev) => ({ ...prev, loading: false }));
         throw err;
@@ -222,10 +288,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw new Error(data.message || "Failed to accept invite");
         }
 
-        const data = await res.json();
-        const profile = data.profile || null;
-        setCachedProfile(profile);
-        setState({ user, userProfile: profile, loading: false, initialized: true });
+        // Fetch all data for the org being joined
+        const init = await fetchInit(user);
+        if (init) {
+          setState({
+            user,
+            userProfile: init.profile,
+            initialData: { settings: init.settings, leads: init.leads, calls: init.calls },
+            loading: false,
+            initialized: true,
+          });
+        } else {
+          const data = await res.json();
+          setState({ user, userProfile: data.profile || null, initialData: null, loading: false, initialized: true });
+        }
       } catch (err) {
         setState((prev) => ({ ...prev, loading: false }));
         throw err;
@@ -235,12 +311,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const signOut = useCallback(async () => {
-    setCachedProfile(null);
+    setCachedInit(null);
     await clearSessionCookie();
     await firebaseSignOut(auth);
     setState({
       user: null,
       userProfile: null,
+      initialData: null,
       loading: false,
       initialized: true,
     });

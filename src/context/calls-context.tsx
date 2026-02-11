@@ -58,7 +58,7 @@ const CallsContext = createContext<{
 } | null>(null);
 
 export function CallsProvider({ children }: { children: ReactNode }) {
-  const { user, userProfile } = useAuthContext();
+  const { user, userProfile, initialData } = useAuthContext();
   const orgId = userProfile?.orgId ?? null;
 
   const [state, baseDispatch] = useReducer(callsReducer, {
@@ -72,34 +72,16 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     return user.getIdToken();
   }, [user]);
 
-  // Load calls from server API when authenticated
+  // Use initialData from auth context (pre-fetched in single API call)
   useEffect(() => {
-    if (!orgId || !user) {
+    if (!orgId) {
       baseDispatch({ type: "SET_CALLS", payload: [] });
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch("/api/data/calls", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!cancelled && res.ok) {
-          const data = await res.json();
-          baseDispatch({ type: "SET_CALLS", payload: data.calls || [] });
-        } else if (!cancelled) {
-          baseDispatch({ type: "SET_CALLS", payload: [] });
-        }
-      } catch (err) {
-        console.error("Failed to load calls:", err);
-        if (!cancelled) {
-          baseDispatch({ type: "SET_CALLS", payload: [] });
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [orgId, user]);
+    if (initialData) {
+      baseDispatch({ type: "SET_CALLS", payload: initialData.calls as CallRecord[] });
+    }
+  }, [orgId, initialData]);
 
   // Enhanced dispatch that also persists via server API
   const dispatch: React.Dispatch<CallsAction> = useCallback(

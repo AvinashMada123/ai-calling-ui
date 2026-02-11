@@ -7,16 +7,16 @@ import { AuthGuard } from "@/components/auth/auth-guard";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
-    <AuthGuard>
-      <div className="flex h-screen w-full overflow-hidden bg-background">
-        <AppSidebar />
-        <div className="flex flex-1 flex-col overflow-hidden">
-          <Header />
-          <main className="flex-1 overflow-y-auto p-6">
+    <div className="flex h-screen w-full overflow-hidden bg-background">
+      <AppSidebar />
+      <div className="flex flex-1 flex-col overflow-hidden">
+        <Header />
+        <main className="flex-1 overflow-y-auto p-6">
+          <AuthGuard>
             <PageTransition>{children}</PageTransition>
-          </main>
-        </div>
+          </AuthGuard>
+        </main>
       </div>
-    </AuthGuard>
+    </div>
   );
 }

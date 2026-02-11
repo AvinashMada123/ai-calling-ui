@@ -129,7 +129,7 @@ const LeadsContext = createContext<{
 } | null>(null);
 
 export function LeadsProvider({ children }: { children: ReactNode }) {
-  const { user, userProfile } = useAuthContext();
+  const { user, userProfile, initialData } = useAuthContext();
   const orgId = userProfile?.orgId ?? null;
 
   const [state, baseDispatch] = useReducer(leadsReducer, {
@@ -144,34 +144,16 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
     return user.getIdToken();
   }, [user]);
 
-  // Load leads from server API when authenticated
+  // Use initialData from auth context (pre-fetched in single API call)
   useEffect(() => {
-    if (!orgId || !user) {
+    if (!orgId) {
       baseDispatch({ type: "SET_LEADS", payload: [] });
       return;
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const token = await user.getIdToken();
-        const res = await fetch("/api/data/leads", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!cancelled && res.ok) {
-          const data = await res.json();
-          baseDispatch({ type: "SET_LEADS", payload: data.leads || [] });
-        } else if (!cancelled) {
-          baseDispatch({ type: "SET_LEADS", payload: [] });
-        }
-      } catch (err) {
-        console.error("Failed to load leads:", err);
-        if (!cancelled) {
-          baseDispatch({ type: "SET_LEADS", payload: [] });
-        }
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [orgId, user]);
+    if (initialData) {
+      baseDispatch({ type: "SET_LEADS", payload: initialData.leads as Lead[] });
+    }
+  }, [orgId, initialData]);
 
   // Enhanced dispatch that also persists via server API
   const dispatch: React.Dispatch<LeadsAction> = useCallback(

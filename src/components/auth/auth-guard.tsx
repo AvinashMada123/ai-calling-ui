@@ -20,18 +20,10 @@ export function AuthGuard({ children }: AuthGuardProps) {
     }
   }, [initialized, loading, isAuthenticated, router]);
 
-  if (!initialized || loading) {
+  if (!initialized || loading || !isAuthenticated) {
     return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-background">
-        <Loader2 className="size-8 animate-spin text-muted-foreground" />
+      <div className="flex h-full w-full items-center justify-center py-20">
+        <Loader2 className="size-6 animate-spin text-muted-foreground" />
       </div>
     );
   }
