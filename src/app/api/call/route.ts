@@ -72,15 +72,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build context: payload fields override bot config context variables
+    // Build context: bot config context variables take priority (form fields are
+    // hidden when a bot config is selected, so payload values are stale defaults)
     const ctx = configDoc?.contextVariables || {};
     const context = {
       customer_name: payload.contactName || "Customer",
-      agent_name: payload.agentName || ctx.agentName || "Agent",
-      company_name: payload.companyName || ctx.companyName || "",
-      event_name: payload.eventName || ctx.eventName || "",
-      event_host: payload.eventHost || ctx.eventHost || "",
-      location: payload.location || ctx.location || "",
+      agent_name: ctx.agentName || payload.agentName || "Agent",
+      company_name: ctx.companyName || payload.companyName || "",
+      event_name: ctx.eventName || payload.eventName || "",
+      event_host: ctx.eventHost || payload.eventHost || "",
+      location: ctx.location || payload.location || "",
     };
 
     // Build enriched payload — bot config fields + context + original fields
