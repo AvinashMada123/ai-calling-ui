@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { DEFAULT_BOT_CONFIG } from "@/lib/default-bot-config";
 
 const SESSION_COOKIE_NAME = "__session";
 const SESSION_EXPIRY = 60 * 60 * 24 * 14 * 1000; // 14 days
@@ -124,6 +125,21 @@ export async function POST(request: NextRequest) {
         createdAt: now,
         lastLoginAt: now,
       });
+
+      // Seed default bot config for the new organization
+      const botConfigId = crypto.randomUUID();
+      await adminDb
+        .collection("organizations")
+        .doc(orgId)
+        .collection("botConfigs")
+        .doc(botConfigId)
+        .set({
+          ...DEFAULT_BOT_CONFIG,
+          id: botConfigId,
+          createdAt: now,
+          updatedAt: now,
+          createdBy: uid,
+        });
     }
 
     // Create session cookie

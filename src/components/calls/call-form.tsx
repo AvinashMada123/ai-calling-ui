@@ -15,6 +15,7 @@ import { useCalls } from "@/hooks/use-calls";
 import { useLeads } from "@/hooks/use-leads";
 import { validateCallRequest } from "@/lib/validators";
 import { VoiceSelector } from "@/components/calls/voice-selector";
+import { BotConfigSelector } from "@/components/calls/bot-config-selector";
 import { LeadSelector } from "@/components/calls/lead-selector";
 import type { CallRequest } from "@/types/call";
 import type { Lead } from "@/types/lead";
@@ -35,6 +36,7 @@ export function CallForm() {
     eventHost: settings.defaults.eventHost,
     voice: settings.defaults.voice,
     location: settings.defaults.location,
+    botConfigId: "",
   });
 
   const [loading, setLoading] = useState(false);
@@ -324,6 +326,12 @@ export function CallForm() {
           {errors.voice && (
             <p className="text-xs text-red-500">{errors.voice}</p>
           )}
+
+          {/* Bot config selector */}
+          <BotConfigSelector
+            value={form.botConfigId || ""}
+            onChange={(value) => updateField("botConfigId", value)}
+          />
 
           {/* Submit button */}
           <motion.button

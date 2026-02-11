@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Phone } from "lucide-react";
 import {
   Dialog,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { BotConfigSelector } from "@/components/calls/bot-config-selector";
 import { formatPhoneNumber } from "@/lib/utils";
 import type { Lead } from "@/types/lead";
 
@@ -17,7 +19,7 @@ interface BulkCallDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   leads: Lead[];
-  onConfirm: () => void;
+  onConfirm: (botConfigId?: string) => void;
 }
 
 export function BulkCallDialog({
@@ -26,9 +28,11 @@ export function BulkCallDialog({
   leads,
   onConfirm,
 }: BulkCallDialogProps) {
+  const [selectedBotConfigId, setSelectedBotConfigId] = useState("");
+
   const handleStart = () => {
     onOpenChange(false);
-    onConfirm();
+    onConfirm(selectedBotConfigId || undefined);
   };
 
   return (
@@ -45,7 +49,7 @@ export function BulkCallDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <ScrollArea className="max-h-[300px]">
+        <ScrollArea className="max-h-[200px]">
           <div className="space-y-1">
             {leads.map((lead) => (
               <div
@@ -63,6 +67,11 @@ export function BulkCallDialog({
             ))}
           </div>
         </ScrollArea>
+
+        <BotConfigSelector
+          value={selectedBotConfigId}
+          onChange={setSelectedBotConfigId}
+        />
 
         <div className="flex gap-2 justify-end">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

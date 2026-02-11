@@ -8,6 +8,7 @@ export interface CallRequest {
   eventHost: string;
   voice: string;
   location: string;
+  botConfigId?: string;
 }
 
 export interface CallResponse {
@@ -71,6 +72,8 @@ export interface CallRecord {
   interestLevel?: string;
   completionRate?: number;
   callSummary?: string;
+  botConfigId?: string;
+  botConfigName?: string;
 }
 
 export type CallStatus =

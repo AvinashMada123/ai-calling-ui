@@ -54,7 +54,7 @@ export function LeadsToolbar() {
 
   const selectedLeads = leads.filter((l) => selectedIds.includes(l.id));
 
-  const startBulkCalls = useCallback(async () => {
+  const startBulkCalls = useCallback(async (botConfigId?: string) => {
     const leadsToCall = [...selectedLeads];
     deselectAll();
 
@@ -81,6 +81,7 @@ export function LeadsToolbar() {
             eventHost: settings.defaults.eventHost,
             voice: settings.defaults.voice,
             location: lead.location || settings.defaults.location,
+            botConfigId,
           };
 
           await initiateCall(request, lead.id);
