@@ -11,14 +11,6 @@ import {
 import type { Lead, LeadFilters } from "@/types/lead";
 import { generateId } from "@/lib/utils";
 import { useAuthContext } from "./auth-context";
-import {
-  getLeads as firestoreGetLeads,
-  addLead as firestoreAddLead,
-  addLeadsBulk as firestoreAddLeadsBulk,
-  updateLead as firestoreUpdateLead,
-  deleteLeads as firestoreDeleteLeads,
-  incrementCallCount as firestoreIncrementCallCount,
-} from "@/lib/firestore/leads";
 
 interface LeadsState {
   leads: Lead[];
@@ -137,7 +129,7 @@ const LeadsContext = createContext<{
 } | null>(null);
 
 export function LeadsProvider({ children }: { children: ReactNode }) {
-  const { userProfile } = useAuthContext();
+  const { user, userProfile } = useAuthContext();
   const orgId = userProfile?.orgId ?? null;
 
   const [state, baseDispatch] = useReducer(leadsReducer, {
@@ -147,36 +139,59 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
     loaded: false,
   });
 
-  // Load leads from Firestore when authenticated
+  const getToken = useCallback(async () => {
+    if (!user) return null;
+    return user.getIdToken();
+  }, [user]);
+
+  // Load leads from server API when authenticated
   useEffect(() => {
-    if (!orgId) {
+    if (!orgId || !user) {
       baseDispatch({ type: "SET_LEADS", payload: [] });
       return;
     }
     let cancelled = false;
-    firestoreGetLeads(orgId)
-      .then((leads) => {
-        if (!cancelled) {
-          baseDispatch({ type: "SET_LEADS", payload: leads });
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch("/api/data/leads", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          baseDispatch({ type: "SET_LEADS", payload: data.leads || [] });
+        } else if (!cancelled) {
+          baseDispatch({ type: "SET_LEADS", payload: [] });
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load leads from Firestore:", err);
+      } catch (err) {
+        console.error("Failed to load leads:", err);
         if (!cancelled) {
           baseDispatch({ type: "SET_LEADS", payload: [] });
         }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orgId, user]);
 
-  // Enhanced dispatch that also persists to Firestore
+  // Enhanced dispatch that also persists via server API
   const dispatch: React.Dispatch<LeadsAction> = useCallback(
     (action: LeadsAction) => {
       baseDispatch(action);
 
       if (!orgId) return;
+
+      const apiCall = async (body: Record<string, unknown>) => {
+        const token = await getToken();
+        if (!token) return;
+        await fetch("/api/data/leads", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        });
+      };
 
       switch (action.type) {
         case "ADD_LEAD": {
@@ -188,8 +203,8 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
             createdAt: now,
             updatedAt: now,
           };
-          firestoreAddLead(orgId, newLead).catch((err) =>
-            console.error("Failed to add lead to Firestore:", err)
+          apiCall({ action: "add", lead: newLead }).catch((err) =>
+            console.error("Failed to add lead:", err)
           );
           break;
         }
@@ -209,26 +224,26 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
             updatedAt: now,
             source: action.payload.source,
           }));
-          firestoreAddLeadsBulk(orgId, newLeads).catch((err) =>
-            console.error("Failed to bulk add leads to Firestore:", err)
+          apiCall({ action: "addBulk", leads: newLeads }).catch((err) =>
+            console.error("Failed to bulk add leads:", err)
           );
           break;
         }
         case "UPDATE_LEAD": {
-          firestoreUpdateLead(orgId, action.payload.id, action.payload.updates).catch((err) =>
-            console.error("Failed to update lead in Firestore:", err)
+          apiCall({ action: "update", id: action.payload.id, updates: action.payload.updates }).catch((err) =>
+            console.error("Failed to update lead:", err)
           );
           break;
         }
         case "DELETE_LEADS": {
-          firestoreDeleteLeads(orgId, action.payload).catch((err) =>
-            console.error("Failed to delete leads from Firestore:", err)
+          apiCall({ action: "delete", ids: action.payload }).catch((err) =>
+            console.error("Failed to delete leads:", err)
           );
           break;
         }
         case "INCREMENT_CALL_COUNT": {
-          firestoreIncrementCallCount(orgId, action.payload).catch((err) =>
-            console.error("Failed to increment call count in Firestore:", err)
+          apiCall({ action: "incrementCallCount", id: action.payload }).catch((err) =>
+            console.error("Failed to increment call count:", err)
           );
           break;
         }
@@ -236,7 +251,7 @@ export function LeadsProvider({ children }: { children: ReactNode }) {
           break;
       }
     },
-    [orgId]
+    [orgId, getToken]
   );
 
   return (

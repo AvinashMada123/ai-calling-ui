@@ -11,10 +11,6 @@ import {
 import type { AppSettings } from "@/types/settings";
 import { DEFAULT_SETTINGS } from "@/lib/constants";
 import { useAuthContext } from "./auth-context";
-import {
-  getOrgSettings,
-  updateOrgSettings,
-} from "@/lib/firestore/organizations";
 
 type SettingsAction =
   | { type: "SET_SETTINGS"; payload: AppSettings }
@@ -66,7 +62,7 @@ const SettingsContext = createContext<{
 } | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
-  const { userProfile } = useAuthContext();
+  const { user, userProfile } = useAuthContext();
   const orgId = userProfile?.orgId ?? null;
 
   const [state, baseDispatch] = useReducer(settingsReducer, {
@@ -74,53 +70,74 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     loaded: false,
   });
 
-  // Load settings from Firestore when authenticated
+  const getToken = useCallback(async () => {
+    if (!user) return null;
+    return user.getIdToken();
+  }, [user]);
+
+  // Load settings from server API when authenticated
   useEffect(() => {
-    if (!orgId) {
-      baseDispatch({
-        type: "SET_SETTINGS",
-        payload: DEFAULT_SETTINGS,
-      });
+    if (!orgId || !user) {
+      baseDispatch({ type: "SET_SETTINGS", payload: DEFAULT_SETTINGS });
       return;
     }
     let cancelled = false;
-    getOrgSettings(orgId)
-      .then((settings) => {
-        if (!cancelled) {
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch("/api/data/settings", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          const settings = data.settings || {};
           baseDispatch({
             type: "SET_SETTINGS",
-            payload: settings ? { ...DEFAULT_SETTINGS, ...settings } : DEFAULT_SETTINGS,
+            payload: { ...DEFAULT_SETTINGS, ...settings },
           });
+        } else if (!cancelled) {
+          baseDispatch({ type: "SET_SETTINGS", payload: DEFAULT_SETTINGS });
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load settings from Firestore:", err);
+      } catch (err) {
+        console.error("Failed to load settings:", err);
         if (!cancelled) {
           baseDispatch({ type: "SET_SETTINGS", payload: DEFAULT_SETTINGS });
         }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orgId, user]);
 
-  // Enhanced dispatch that also persists to Firestore
+  // Enhanced dispatch that also persists via server API
   const dispatch: React.Dispatch<SettingsAction> = useCallback(
     (action: SettingsAction) => {
       baseDispatch(action);
 
       if (!orgId) return;
 
+      const persistSettings = async (settings: Partial<AppSettings>) => {
+        const token = await getToken();
+        if (!token) return;
+        await fetch("/api/data/settings", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ settings }),
+        });
+      };
+
       switch (action.type) {
         case "UPDATE_SETTINGS": {
-          updateOrgSettings(orgId, action.payload).catch((err) =>
-            console.error("Failed to update settings in Firestore:", err)
+          persistSettings(action.payload).catch((err) =>
+            console.error("Failed to update settings:", err)
           );
           break;
         }
         case "RESET": {
-          updateOrgSettings(orgId, DEFAULT_SETTINGS).catch((err) =>
-            console.error("Failed to reset settings in Firestore:", err)
+          persistSettings(DEFAULT_SETTINGS).catch((err) =>
+            console.error("Failed to reset settings:", err)
           );
           break;
         }
@@ -128,7 +145,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           break;
       }
     },
-    [orgId]
+    [orgId, getToken]
   );
 
   return (

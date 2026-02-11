@@ -10,11 +10,6 @@ import {
 } from "react";
 import type { CallRecord, CallStatus } from "@/types/call";
 import { useAuthContext } from "./auth-context";
-import {
-  getCalls as firestoreGetCalls,
-  addCall as firestoreAddCall,
-  updateCall as firestoreUpdateCall,
-} from "@/lib/firestore/calls";
 
 interface CallsState {
   calls: CallRecord[];
@@ -63,7 +58,7 @@ const CallsContext = createContext<{
 } | null>(null);
 
 export function CallsProvider({ children }: { children: ReactNode }) {
-  const { userProfile } = useAuthContext();
+  const { user, userProfile } = useAuthContext();
   const orgId = userProfile?.orgId ?? null;
 
   const [state, baseDispatch] = useReducer(callsReducer, {
@@ -72,47 +67,70 @@ export function CallsProvider({ children }: { children: ReactNode }) {
     loaded: false,
   });
 
-  // Load calls from Firestore when authenticated
+  const getToken = useCallback(async () => {
+    if (!user) return null;
+    return user.getIdToken();
+  }, [user]);
+
+  // Load calls from server API when authenticated
   useEffect(() => {
-    if (!orgId) {
+    if (!orgId || !user) {
       baseDispatch({ type: "SET_CALLS", payload: [] });
       return;
     }
     let cancelled = false;
-    firestoreGetCalls(orgId)
-      .then((calls) => {
-        if (!cancelled) {
-          baseDispatch({ type: "SET_CALLS", payload: calls });
+    (async () => {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch("/api/data/calls", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!cancelled && res.ok) {
+          const data = await res.json();
+          baseDispatch({ type: "SET_CALLS", payload: data.calls || [] });
+        } else if (!cancelled) {
+          baseDispatch({ type: "SET_CALLS", payload: [] });
         }
-      })
-      .catch((err) => {
-        console.error("Failed to load calls from Firestore:", err);
+      } catch (err) {
+        console.error("Failed to load calls:", err);
         if (!cancelled) {
           baseDispatch({ type: "SET_CALLS", payload: [] });
         }
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [orgId]);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [orgId, user]);
 
-  // Enhanced dispatch that also persists to Firestore
+  // Enhanced dispatch that also persists via server API
   const dispatch: React.Dispatch<CallsAction> = useCallback(
     (action: CallsAction) => {
       baseDispatch(action);
 
       if (!orgId) return;
 
+      const apiCall = async (body: Record<string, unknown>) => {
+        const token = await getToken();
+        if (!token) return;
+        await fetch("/api/data/calls", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(body),
+        });
+      };
+
       switch (action.type) {
         case "ADD_CALL": {
-          firestoreAddCall(orgId, action.payload).catch((err) =>
-            console.error("Failed to add call to Firestore:", err)
+          apiCall({ action: "add", call: action.payload }).catch((err) =>
+            console.error("Failed to add call:", err)
           );
           break;
         }
         case "UPDATE_CALL": {
-          firestoreUpdateCall(orgId, action.payload.id, action.payload.updates).catch((err) =>
-            console.error("Failed to update call in Firestore:", err)
+          apiCall({ action: "update", id: action.payload.id, updates: action.payload.updates }).catch((err) =>
+            console.error("Failed to update call:", err)
           );
           break;
         }
@@ -120,7 +138,7 @@ export function CallsProvider({ children }: { children: ReactNode }) {
           break;
       }
     },
-    [orgId]
+    [orgId, getToken]
   );
 
   return (
