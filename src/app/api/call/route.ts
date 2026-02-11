@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-helpers";
 import { adminDb } from "@/lib/firebase-admin";
 
-const DEFAULT_WEBHOOK_URL =
-  process.env.N8N_WEBHOOK_URL ||
-  "https://n8n.srv1100770.hstgr.cloud/webhook/start-call";
+const CALL_SERVER_URL =
+  process.env.CALL_SERVER_URL ||
+  "http://34.93.142.172:3001/call/conversational";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformBotConfig(config: any) {
@@ -31,16 +31,6 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { payload } = body;
     const orgId = authUser?.orgId || "";
-
-    // Get org webhook URL from Firestore (or use default)
-    let webhookUrl = DEFAULT_WEBHOOK_URL;
-    if (orgId) {
-      const orgDoc = await adminDb.collection("organizations").doc(orgId).get();
-      if (orgDoc.exists) {
-        const orgWebhook = orgDoc.data()?.webhookUrl;
-        if (orgWebhook) webhookUrl = orgWebhook;
-      }
-    }
 
     // Resolve bot config from Firestore
     let botConfigPayload = {};
@@ -84,26 +74,34 @@ export async function POST(request: NextRequest) {
       location: ctx.location || payload.location || "",
     };
 
-    // Build enriched payload — bot config fields + context + original fields
-    const { botConfigId: _removed, ...payloadWithoutBotConfigId } = payload;
-    const enrichedPayload = {
-      ...payloadWithoutBotConfigId,
+    // Determine the public URL for the call-ended callback
+    const host = request.headers.get("host") || "localhost:3000";
+    const protocol = host.includes("localhost") ? "http" : "https";
+    const callEndWebhookUrl = `${protocol}://${host}/api/call-ended`;
+
+    // Build payload for the call server (bypass n8n — send directly)
+    const callServerPayload = {
+      phoneNumber: payload.phoneNumber,
+      contactName: payload.contactName,
+      clientName: payload.clientName,
+      voice: payload.voice,
       orgId,
+      callEndWebhookUrl,
       context,
       ...botConfigPayload,
     };
 
-    console.log("[API /api/call] Webhook URL:", webhookUrl);
+    console.log("[API /api/call] Call server URL:", CALL_SERVER_URL);
     console.log("[API /api/call] Context:", JSON.stringify(context));
-    console.log("[API /api/call] Bot config found:", !!configDoc, "contextVars:", JSON.stringify(ctx));
+    console.log("[API /api/call] callEndWebhookUrl:", callEndWebhookUrl);
 
-    const response = await fetch(webhookUrl, {
+    const response = await fetch(CALL_SERVER_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(enrichedPayload),
+      body: JSON.stringify(callServerPayload),
     });
 
-    console.log("[API /api/call] Webhook response status:", response.status);
+    console.log("[API /api/call] Call server response status:", response.status);
 
     const responseText = await response.text();
     let data;
@@ -112,7 +110,7 @@ export async function POST(request: NextRequest) {
     } catch {
       console.error("[API /api/call] Non-JSON response:", response.status, responseText.slice(0, 500));
       return NextResponse.json(
-        { success: false, call_uuid: "", message: `Webhook returned ${response.status}: ${responseText.slice(0, 200) || "(empty body)"}` },
+        { success: false, call_uuid: "", message: `Call server returned ${response.status}: ${responseText.slice(0, 200) || "(empty body)"}` },
         { status: 502 }
       );
     }
