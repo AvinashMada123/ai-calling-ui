@@ -188,6 +188,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signIn = useCallback(async (email: string, password: string) => {
     setState((prev) => ({ ...prev, loading: true }));
     try {
+      // Set flag BEFORE signIn so onAuthStateChanged skips its fetch
+      handledByAction.current = true;
       const { user } = await signInWithEmailAndPassword(auth, email, password);
       const idToken = await user.getIdToken();
 
@@ -206,9 +208,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(data.message || "Login failed");
       }
 
-      // Mark so onAuthStateChanged skips its own fetch
-      handledByAction.current = true;
-
       if (init) {
         setState({
           user,
@@ -222,6 +221,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setState({ user, userProfile: data.profile || null, initialData: null, loading: false, initialized: true });
       }
     } catch (err) {
+      handledByAction.current = false;
       setState((prev) => ({ ...prev, loading: false }));
       throw err;
     }
@@ -236,6 +236,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
       setState((prev) => ({ ...prev, loading: true }));
       try {
+        handledByAction.current = true;
         const { user } = await createUserWithEmailAndPassword(
           auth,
           email,
@@ -257,7 +258,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const data = await res.json();
         const profile = data.profile || null;
-        handledByAction.current = true;
         setCachedInit(profile ? { profile, settings: {}, leads: [], calls: [] } : null);
         setState({
           user,
@@ -267,6 +267,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           initialized: true,
         });
       } catch (err) {
+        handledByAction.current = false;
         setState((prev) => ({ ...prev, loading: false }));
         throw err;
       }
@@ -283,6 +284,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
       setState((prev) => ({ ...prev, loading: true }));
       try {
+        handledByAction.current = true;
         const { user } = await createUserWithEmailAndPassword(
           auth,
           email,
@@ -304,7 +306,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Fetch all data for the org being joined
         const init = await fetchInit(user);
-        handledByAction.current = true;
         if (init) {
           setState({
             user,
@@ -318,6 +319,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setState({ user, userProfile: data.profile || null, initialData: null, loading: false, initialized: true });
         }
       } catch (err) {
+        handledByAction.current = false;
         setState((prev) => ({ ...prev, loading: false }));
         throw err;
       }
