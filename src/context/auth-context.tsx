@@ -16,9 +16,8 @@ import {
   updateProfile,
   type User,
 } from "firebase/auth";
-import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
-import type { UserProfile, UserRole } from "@/types/user";
+import { auth } from "@/lib/firebase";
+import type { UserProfile } from "@/types/user";
 
 interface AuthState {
   user: User | null;
@@ -47,29 +46,18 @@ interface AuthContextValue extends AuthState {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-async function fetchUserProfile(uid: string): Promise<UserProfile | null> {
-  const snap = await getDoc(doc(db, "users", uid));
-  if (!snap.exists()) return null;
-  return { uid, ...snap.data() } as UserProfile;
-}
-
-async function createSessionCookie(user: User) {
-  const idToken = await user.getIdToken();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 10000);
+// Fetch user profile via server API to avoid client-side Firestore issues
+async function fetchUserProfile(user: User): Promise<UserProfile | null> {
   try {
-    const res = await fetch("/api/auth/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ idToken }),
-      signal: controller.signal,
+    const idToken = await user.getIdToken();
+    const res = await fetch("/api/auth/me", {
+      headers: { Authorization: `Bearer ${idToken}` },
     });
-    if (!res.ok) {
-      const body = await res.text();
-      console.error("[Session] Server returned", res.status, body);
-    }
-  } finally {
-    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.profile || null;
+  } catch {
+    return null;
   }
 }
 
@@ -87,14 +75,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshProfile = useCallback(async () => {
     if (!state.user) return;
-    const profile = await fetchUserProfile(state.user.uid);
+    const profile = await fetchUserProfile(state.user);
     setState((prev) => ({ ...prev, userProfile: profile }));
   }, [state.user]);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
-        const profile = await fetchUserProfile(user.uid);
+        const profile = await fetchUserProfile(user);
         setState({ user, userProfile: profile, loading: false, initialized: true });
       } else {
         setState({ user: null, userProfile: null, loading: false, initialized: true });
@@ -107,15 +95,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState((prev) => ({ ...prev, loading: true }));
     try {
       const { user } = await signInWithEmailAndPassword(auth, email, password);
-      await createSessionCookie(user);
-      // Update last login
-      await setDoc(
-        doc(db, "users", user.uid),
-        { lastLoginAt: new Date().toISOString() },
-        { merge: true }
-      );
-    } finally {
+      const idToken = await user.getIdToken();
+
+      // Server handles session cookie + lastLogin update
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ idToken }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.message || "Login failed");
+      }
+
+      // Fetch profile after server has set session
+      const profile = await fetchUserProfile(user);
+      setState({ user, userProfile: profile, loading: false, initialized: true });
+    } catch (err) {
       setState((prev) => ({ ...prev, loading: false }));
+      throw err;
     }
   }, []);
 
@@ -128,73 +127,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
       setState((prev) => ({ ...prev, loading: true }));
       try {
-        console.log("[SignUp] Step 1: Creating Firebase Auth user...");
+        // Step 1: Create Firebase Auth user (client-side)
         const { user } = await createUserWithEmailAndPassword(
           auth,
           email,
           password
         );
-        console.log("[SignUp] Step 2: Updating profile...");
         await updateProfile(user, { displayName });
 
-        // Create organization
-        const orgSlug = orgName
-          .toLowerCase()
-          .replace(/[^a-z0-9]+/g, "-")
-          .replace(/(^-|-$)/g, "");
-        const orgRef = doc(db, "organizations", crypto.randomUUID());
-        const now = new Date().toISOString();
-        console.log("[SignUp] Step 3: Creating organization in Firestore...");
-        await setDoc(orgRef, {
-          name: orgName,
-          slug: orgSlug,
-          plan: "free",
-          status: "active",
-          webhookUrl: "",
-          createdBy: user.uid,
-          createdAt: now,
-          updatedAt: now,
-          settings: {
-            defaults: {
-              clientName: orgSlug,
-              agentName: "Agent",
-              companyName: orgName,
-              eventName: "",
-              eventHost: "",
-              voice: "Puck",
-              location: "",
-            },
-            appearance: {
-              sidebarCollapsed: false,
-              animationsEnabled: true,
-            },
-            ai: {
-              autoQualify: true,
-            },
-          },
+        // Step 2: Server handles org creation, user profile, and session cookie
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken, displayName, orgName }),
         });
 
-        console.log("[SignUp] Step 4: Creating user profile in Firestore...");
-        await setDoc(doc(db, "users", user.uid), {
-          email,
-          displayName,
-          role: "client_admin" as UserRole,
-          orgId: orgRef.id,
-          status: "active",
-          createdAt: now,
-          lastLoginAt: now,
-        });
-
-        console.log("[SignUp] Step 5: Creating session cookie...");
-        try {
-          await createSessionCookie(user);
-          console.log("[SignUp] Session cookie created.");
-        } catch (sessionErr) {
-          console.warn("[SignUp] Session cookie failed (non-fatal):", sessionErr);
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || "Failed to create account");
         }
-        console.log("[SignUp] Complete!");
-      } finally {
+
+        // Fetch profile after server has created everything
+        const profile = await fetchUserProfile(user);
+        setState({ user, userProfile: profile, loading: false, initialized: true });
+      } catch (err) {
         setState((prev) => ({ ...prev, loading: false }));
+        throw err;
       }
     },
     []
@@ -209,13 +168,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     ) => {
       setState((prev) => ({ ...prev, loading: true }));
       try {
-        // Fetch invite details
-        const inviteSnap = await getDoc(doc(db, "invites", inviteId));
-        if (!inviteSnap.exists()) throw new Error("Invite not found");
-        const invite = inviteSnap.data();
-        if (invite.status !== "pending") throw new Error("Invite already used");
-        if (invite.email !== email) throw new Error("Email does not match invite");
-
         const { user } = await createUserWithEmailAndPassword(
           auth,
           email,
@@ -223,29 +175,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         );
         await updateProfile(user, { displayName });
 
-        const now = new Date().toISOString();
-        // Create user profile with invite's org and role
-        await setDoc(doc(db, "users", user.uid), {
-          email,
-          displayName,
-          role: invite.role as UserRole,
-          orgId: invite.orgId,
-          status: "active",
-          createdAt: now,
-          lastLoginAt: now,
-          invitedBy: invite.invitedBy,
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/auth/signup", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ idToken, displayName, inviteId }),
         });
 
-        // Mark invite as accepted
-        await setDoc(
-          doc(db, "invites", inviteId),
-          { status: "accepted" },
-          { merge: true }
-        );
+        if (!res.ok) {
+          const data = await res.json();
+          throw new Error(data.message || "Failed to accept invite");
+        }
 
-        await createSessionCookie(user);
-      } finally {
+        const profile = await fetchUserProfile(user);
+        setState({ user, userProfile: profile, loading: false, initialized: true });
+      } catch (err) {
         setState((prev) => ({ ...prev, loading: false }));
+        throw err;
       }
     },
     []
