@@ -91,6 +91,7 @@ export async function POST(request: NextRequest) {
     };
 
     console.log("[API /api/call] Webhook URL:", webhookUrl);
+    console.log("[API /api/call] Payload keys:", Object.keys(enrichedPayload));
 
     const response = await fetch(webhookUrl, {
       method: "POST",
@@ -98,13 +99,16 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify(enrichedPayload),
     });
 
+    console.log("[API /api/call] Webhook response status:", response.status);
+
     const responseText = await response.text();
     let data;
     try {
       data = JSON.parse(responseText);
     } catch {
+      console.error("[API /api/call] Non-JSON response:", response.status, responseText.slice(0, 500));
       return NextResponse.json(
-        { success: false, call_uuid: "", message: `Non-JSON response: ${responseText.slice(0, 200)}` },
+        { success: false, call_uuid: "", message: `Webhook returned ${response.status}: ${responseText.slice(0, 200) || "(empty body)"}` },
         { status: 502 }
       );
     }
