@@ -111,11 +111,24 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
-              className="grid grid-cols-3 gap-3 mt-4"
+              className="space-y-3 mt-4"
             >
-              <MetricCard icon={Clock} label="Duration" value={data.duration_seconds} unit="s" />
-              <MetricCard icon={Activity} label="Completion" value={`${Math.round(data.completion_rate > 1 ? data.completion_rate : data.completion_rate * 100)}%`} />
-              <MetricCard icon={MessageSquare} label="Questions" value={`${data.questions_completed}/${data.total_questions}`} />
+              <div className="grid grid-cols-3 gap-3">
+                <MetricCard icon={Clock} label="Duration" value={data.duration_seconds} unit="s" />
+                <MetricCard icon={Activity} label="Completion" value={`${Math.round(data.completion_rate > 1 ? data.completion_rate : data.completion_rate * 100)}%`} />
+                <MetricCard icon={MessageSquare} label="Questions" value={`${data.questions_completed}/${data.total_questions}`} />
+              </div>
+              {call.status === "completed" && call.callUuid && (
+                <div className="rounded-lg border bg-muted/30 p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Recording</p>
+                  <audio
+                    controls
+                    className="w-full h-8"
+                    src={`/api/calls/${call.callUuid}/recording`}
+                    preload="none"
+                  />
+                </div>
+              )}
             </motion.div>
           )}
         </DialogHeader>

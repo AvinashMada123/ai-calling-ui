@@ -19,6 +19,15 @@ export async function POST(request: NextRequest) {
     console.log("[API /api/call-ended] completion_rate:", data.completion_rate);
     console.log("[API /api/call-ended] call_summary:", data.call_summary?.slice(0, 100));
     console.log("[API /api/call-ended] orgId (query):", queryOrgId, "orgId (body):", data.orgId);
+    console.log("[API /api/call-ended] recording_url:", data.recording_url || "(none)");
+
+    // Normalize recording_url and transcript_entries from FWAI webhook
+    if (!data.recording_url && data.call_uuid) {
+      data.recording_url = `/api/calls/${data.call_uuid}/recording`;
+    }
+    if (!data.transcript_entries) {
+      data.transcript_entries = [];
+    }
 
     // Qualify lead with Gemini if we have question pairs
     if (data.question_pairs && data.question_pairs.length > 0) {

@@ -36,6 +36,8 @@ export interface CallEndedData {
   question_pairs: QuestionPair[];
   call_metrics: CallMetrics;
   transcript: string;
+  transcript_entries?: Array<{ role: string; text: string; timestamp: string }>;
+  recording_url?: string;
   qualification?: QualificationResult;
 }
 

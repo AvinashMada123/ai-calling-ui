@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { PhoneOff, ExternalLink } from "lucide-react";
+import { PhoneOff, ExternalLink, Headphones } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
@@ -96,9 +96,11 @@ export function CallHistoryTable() {
                       {timeAgo(call.initiatedAt)}
                     </TableCell>
                     <TableCell>
-                      {call.endedData && (
+                      {call.status === "completed" && call.callUuid ? (
+                        <Headphones className="h-3.5 w-3.5 text-muted-foreground" />
+                      ) : call.endedData ? (
                         <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" />
-                      )}
+                      ) : null}
                     </TableCell>
                   </motion.tr>
                 ))}
