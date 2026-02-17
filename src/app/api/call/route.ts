@@ -85,13 +85,17 @@ export async function POST(request: NextRequest) {
     const protocol = host.includes("localhost") ? "http" : "https";
     const callEndWebhookUrl = `${protocol}://${host}/api/call-ended${orgId ? `?orgId=${orgId}` : ""}`;
 
-    // Read GHL WhatsApp webhook URL from org settings (if configured)
+    // Read GHL settings from org settings (if configured)
     let ghlWhatsappWebhookUrl = "";
+    let ghlApiKey = "";
+    let ghlLocationId = "";
     if (orgId) {
       const orgDoc = await adminDb.collection("organizations").doc(orgId).get();
       if (orgDoc.exists) {
         const orgSettings = orgDoc.data()?.settings;
         ghlWhatsappWebhookUrl = orgSettings?.ghlWhatsappWebhookUrl || "";
+        ghlApiKey = orgSettings?.ghlApiKey || "";
+        ghlLocationId = orgSettings?.ghlLocationId || "";
       }
     }
 
@@ -111,6 +115,12 @@ export async function POST(request: NextRequest) {
 
     if (ghlWhatsappWebhookUrl) {
       callServerPayload.ghlWhatsappWebhookUrl = ghlWhatsappWebhookUrl;
+    }
+    if (ghlApiKey) {
+      callServerPayload.ghlApiKey = ghlApiKey;
+    }
+    if (ghlLocationId) {
+      callServerPayload.ghlLocationId = ghlLocationId;
     }
 
     const payloadJson = JSON.stringify(callServerPayload, null, 2);

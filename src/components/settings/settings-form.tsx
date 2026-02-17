@@ -39,6 +39,10 @@ export function SettingsForm() {
   const [ghlWhatsappWebhookUrl, setGhlWhatsappWebhookUrl] = useState(
     settings.ghlWhatsappWebhookUrl || ""
   );
+  const [ghlApiKey, setGhlApiKey] = useState(settings.ghlApiKey || "");
+  const [ghlLocationId, setGhlLocationId] = useState(
+    settings.ghlLocationId || ""
+  );
   const [autoQualify, setAutoQualify] = useState(
     settings.ai?.autoQualify ?? true
   );
@@ -73,6 +77,8 @@ export function SettingsForm() {
     setVoice(settings.defaults.voice);
     setWebhookUrl(settings.webhookUrl);
     setGhlWhatsappWebhookUrl(settings.ghlWhatsappWebhookUrl || "");
+    setGhlApiKey(settings.ghlApiKey || "");
+    setGhlLocationId(settings.ghlLocationId || "");
     setAutoQualify(settings.ai?.autoQualify ?? true);
     setAnimationsEnabled(settings.appearance.animationsEnabled);
   }, [settings]);
@@ -90,6 +96,8 @@ export function SettingsForm() {
       },
       webhookUrl,
       ghlWhatsappWebhookUrl,
+      ghlApiKey,
+      ghlLocationId,
       ai: {
         autoQualify,
       },
@@ -242,6 +250,33 @@ export function SettingsForm() {
               <p className="text-xs text-muted-foreground">
                 GoHighLevel inbound webhook URL for triggering WhatsApp messages during calls
               </p>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="ghlApiKey">GHL API Key</Label>
+                <Input
+                  id="ghlApiKey"
+                  type="password"
+                  value={ghlApiKey}
+                  onChange={(e) => setGhlApiKey(e.target.value)}
+                  placeholder="pit-xxxxxxxx..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Settings &rarr; Integrations &rarr; API Keys
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ghlLocationId">GHL Location ID</Label>
+                <Input
+                  id="ghlLocationId"
+                  value={ghlLocationId}
+                  onChange={(e) => setGhlLocationId(e.target.value)}
+                  placeholder="xxxxxxxx..."
+                />
+                <p className="text-xs text-muted-foreground">
+                  Settings &rarr; Business Profile &rarr; Location ID
+                </p>
+              </div>
             </div>
           </CardContent>
         </Card>
