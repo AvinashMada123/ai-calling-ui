@@ -81,6 +81,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
     location: "Hyderabad",
   },
   webhookUrl: "https://n8n.srv1100770.hstgr.cloud/webhook/start-call",
+  ghlWhatsappWebhookUrl: "",
   appearance: {
     sidebarCollapsed: false,
     animationsEnabled: true,

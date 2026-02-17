@@ -36,6 +36,9 @@ export function SettingsForm() {
   const [location, setLocation] = useState(settings.defaults.location);
   const [voice, setVoice] = useState(settings.defaults.voice);
   const [webhookUrl, setWebhookUrl] = useState(settings.webhookUrl);
+  const [ghlWhatsappWebhookUrl, setGhlWhatsappWebhookUrl] = useState(
+    settings.ghlWhatsappWebhookUrl || ""
+  );
   const [autoQualify, setAutoQualify] = useState(
     settings.ai?.autoQualify ?? true
   );
@@ -69,6 +72,7 @@ export function SettingsForm() {
     setLocation(settings.defaults.location);
     setVoice(settings.defaults.voice);
     setWebhookUrl(settings.webhookUrl);
+    setGhlWhatsappWebhookUrl(settings.ghlWhatsappWebhookUrl || "");
     setAutoQualify(settings.ai?.autoQualify ?? true);
     setAnimationsEnabled(settings.appearance.animationsEnabled);
   }, [settings]);
@@ -85,6 +89,7 @@ export function SettingsForm() {
         location,
       },
       webhookUrl,
+      ghlWhatsappWebhookUrl,
       ai: {
         autoQualify,
       },
@@ -223,6 +228,20 @@ export function SettingsForm() {
                 onChange={(e) => setWebhookUrl(e.target.value)}
                 placeholder="https://example.com/webhook"
               />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="ghlWhatsappWebhookUrl">
+                GHL WhatsApp Webhook URL
+              </Label>
+              <Input
+                id="ghlWhatsappWebhookUrl"
+                value={ghlWhatsappWebhookUrl}
+                onChange={(e) => setGhlWhatsappWebhookUrl(e.target.value)}
+                placeholder="https://services.leadconnectorhq.com/hooks/..."
+              />
+              <p className="text-xs text-muted-foreground">
+                GoHighLevel inbound webhook URL for triggering WhatsApp messages during calls
+              </p>
             </div>
           </CardContent>
         </Card>

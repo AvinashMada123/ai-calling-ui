@@ -9,6 +9,7 @@ export interface AppSettings {
     location: string;
   };
   webhookUrl: string;
+  ghlWhatsappWebhookUrl: string;
   appearance: {
     sidebarCollapsed: boolean;
     animationsEnabled: boolean;

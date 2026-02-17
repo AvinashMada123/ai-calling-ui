@@ -85,10 +85,20 @@ export async function POST(request: NextRequest) {
     const protocol = host.includes("localhost") ? "http" : "https";
     const callEndWebhookUrl = `${protocol}://${host}/api/call-ended${orgId ? `?orgId=${orgId}` : ""}`;
 
+    // Read GHL WhatsApp webhook URL from org settings (if configured)
+    let ghlWhatsappWebhookUrl = "";
+    if (orgId) {
+      const orgDoc = await adminDb.collection("organizations").doc(orgId).get();
+      if (orgDoc.exists) {
+        const orgSettings = orgDoc.data()?.settings;
+        ghlWhatsappWebhookUrl = orgSettings?.ghlWhatsappWebhookUrl || "";
+      }
+    }
+
     // Build payload matching the exact format the call server expects.
     // orgId is included so the call server can pass it back in the call-ended
     // callback, allowing /api/call-ended to update the correct org in Firestore.
-    const callServerPayload = {
+    const callServerPayload: Record<string, unknown> = {
       phoneNumber: payload.phoneNumber,
       contactName: payload.contactName || "Customer",
       clientName: payload.clientName || "fwai",
@@ -98,6 +108,10 @@ export async function POST(request: NextRequest) {
       context,
       ...botConfigPayload,
     };
+
+    if (ghlWhatsappWebhookUrl) {
+      callServerPayload.ghlWhatsappWebhookUrl = ghlWhatsappWebhookUrl;
+    }
 
     const payloadJson = JSON.stringify(callServerPayload, null, 2);
     console.log("[API /api/call] Exact curl being sent:");
