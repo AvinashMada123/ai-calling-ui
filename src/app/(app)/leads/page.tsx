@@ -34,8 +34,15 @@ export default function LeadsPage() {
   const handleSync = useCallback(async () => {
     if (!user) return;
     setSyncing(true);
+    const toastId = toast.loading("Connecting to GoHighLevel...");
     try {
       const token = await user.getIdToken();
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 180000); // 3 min timeout
+
+      toast.loading("Fetching contacts from GoHighLevel... This may take a minute.", { id: toastId });
+
       const res = await fetch("/api/data/ghl-contacts", {
         method: "POST",
         headers: {
@@ -43,17 +50,22 @@ export default function LeadsPage() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ action: "sync" }),
+        signal: controller.signal,
       });
+
+      clearTimeout(timeout);
 
       const data = await res.json();
 
       if (!res.ok) {
-        toast.error(data.message || "Failed to sync GHL contacts");
+        toast.error(data.message || "Failed to sync GHL contacts", { id: toastId });
         return;
       }
 
       // Update last sync time in settings
       updateSettings({ ghlLastSyncAt: data.ghlLastSyncAt });
+
+      toast.loading("Refreshing leads list...", { id: toastId });
 
       // Reload leads from server to get the synced data
       const leadsRes = await fetch("/api/data/leads", {
@@ -68,10 +80,13 @@ export default function LeadsPage() {
         );
       }
 
-      toast.success(`Synced ${data.synced} contacts from GoHighLevel`);
+      toast.success(`Synced ${data.synced} contacts from GoHighLevel`, { id: toastId });
     } catch (error) {
       console.error("GHL sync error:", error);
-      toast.error("Failed to sync GHL contacts");
+      const message = error instanceof Error && error.name === "AbortError"
+        ? "Sync timed out — too many contacts. Check server logs."
+        : "Failed to sync GHL contacts";
+      toast.error(message, { id: toastId });
     } finally {
       setSyncing(false);
     }

@@ -38,8 +38,12 @@ async function fetchAllGHLContacts(
 ): Promise<{ contacts: GHLContact[]; total: number }> {
   const allContacts: GHLContact[] = [];
   let startAfterId: string | undefined;
+  let page = 0;
+
+  console.log("[GHL Sync] Starting to fetch contacts from GHL...");
 
   while (true) {
+    page++;
     const params = new URLSearchParams({
       locationId,
       limit: String(GHL_PAGE_LIMIT),
@@ -47,6 +51,8 @@ async function fetchAllGHLContacts(
     if (startAfterId) {
       params.set("startAfterId", startAfterId);
     }
+
+    console.log(`[GHL Sync] Fetching page ${page} (${allContacts.length} contacts so far)...`);
 
     const res = await fetch(`${GHL_API_BASE}/contacts/?${params.toString()}`, {
       headers: {
@@ -57,10 +63,12 @@ async function fetchAllGHLContacts(
 
     if (!res.ok) {
       const errorText = await res.text();
+      console.error(`[GHL Sync] API error on page ${page}: ${res.status} - ${errorText}`);
       throw new Error(`GHL API error ${res.status}: ${errorText}`);
     }
 
     const data: GHLResponse = await res.json();
+    console.log(`[GHL Sync] Page ${page}: got ${data.contacts.length} contacts (total from API: ${data.meta?.total ?? "unknown"})`);
     allContacts.push(...data.contacts);
 
     if (
@@ -73,6 +81,7 @@ async function fetchAllGHLContacts(
     startAfterId = data.meta.startAfterId;
   }
 
+  console.log(`[GHL Sync] Finished fetching. Total contacts: ${allContacts.length}`);
   return { contacts: allContacts, total: allContacts.length };
 }
 
@@ -103,6 +112,7 @@ export async function POST(request: NextRequest) {
     const ghlLocationId = settings.ghlLocationId;
 
     if (!ghlApiKey || !ghlLocationId) {
+      console.error("[GHL Sync] Missing credentials - apiKey:", !!ghlApiKey, "locationId:", !!ghlLocationId);
       return NextResponse.json(
         {
           success: false,
@@ -113,8 +123,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    console.log("[GHL Sync] Credentials found. Starting sync for org:", orgId);
+
     // Fetch all contacts from GHL
     const { contacts } = await fetchAllGHLContacts(ghlApiKey, ghlLocationId);
+
+    console.log(`[GHL Sync] Fetched ${contacts.length} contacts from GHL. Now upserting to Firestore...`);
 
     // Load existing GHL leads to support upsert
     const leadsRef = db
@@ -187,7 +201,10 @@ export async function POST(request: NextRequest) {
       }
 
       await batch.commit();
+      console.log(`[GHL Sync] Committed batch ${Math.floor(i / BATCH_SIZE) + 1} (${Math.min(i + BATCH_SIZE, contacts.length)}/${contacts.length})`);
     }
+
+    console.log(`[GHL Sync] Upsert complete. Synced ${synced} leads. Updating sync timestamp...`);
 
     // Update last sync time in org settings
     await db
