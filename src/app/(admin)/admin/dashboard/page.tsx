@@ -19,6 +19,10 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
+import { getAllOrganizations } from "@/lib/firestore/organizations";
+import { getAllOrgsUsage } from "@/lib/firestore/usage";
+import type { Organization } from "@/types/user";
+import type { UsageRecord } from "@/types/billing";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -109,7 +113,6 @@ export default function AdminDashboardPage() {
   const [recentCalls, setRecentCalls] = useState<RecentCall[]>([]);
   const [topClients, setTopClients] = useState<TopClient[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingDetails, setLoadingDetails] = useState(true);
 
   useEffect(() => {
     if (!isSuperAdmin || !user) return;
@@ -123,40 +126,72 @@ export default function AdminDashboardPage() {
 
       const idToken = await user!.getIdToken();
 
-      // Single optimized API call that does everything server-side
-      const response = await fetch("/api/admin/stats", {
-        headers: { Authorization: `Bearer ${idToken}` },
+      // Fetch all data in parallel with timeout protection
+      const fetchPromise = Promise.all([
+        getAllOrganizations(),
+        getAllOrgsUsage(),
+        fetch("/api/admin/stats", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        }).then((r) => {
+          if (!r.ok) {
+            console.error("[Admin Dashboard] Stats API error:", r.status, r.statusText);
+            return null;
+          }
+          return r.json();
+        }),
+      ]);
+
+      // Add timeout to prevent indefinite loading (30 seconds)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timeout")), 30000)
+      );
+
+      const [orgs, usageRecords, statsRes] = await Promise.race([
+        fetchPromise,
+        timeoutPromise,
+      ]);
+
+      const totalCalls = usageRecords.reduce((sum, u) => sum + (u.totalCalls ?? 0), 0);
+      const totalMinutes = usageRecords.reduce((sum, u) => sum + (u.totalMinutes ?? 0), 0);
+
+      setStats({
+        totalOrgs: orgs.length,
+        totalUsers: statsRes?.totalUsers ?? 0,
+        totalCallsThisMonth: totalCalls,
+        totalMinutesThisMonth: Math.round(totalMinutes * 100) / 100,
       });
 
-      if (!response.ok) {
-        console.error("[Admin Dashboard] Stats API error:", response.status, response.statusText);
-        toast.error("Failed to load platform stats");
-        return;
+      // Recent activity from stats API
+      if (statsRes) {
+        setRecentSignups(statsRes.recentSignups || []);
+        setRecentCalls(statsRes.recentCalls || []);
       }
 
-      const data = await response.json();
+      // Build top clients from usage + orgs
+      const orgMap = new Map<string, Organization>();
+      for (const o of orgs) orgMap.set(o.id, o);
 
-      // Set stats first (show cards immediately)
-      setStats({
-        totalOrgs: data.totalOrgs || 0,
-        totalUsers: data.totalUsers || 0,
-        totalCallsThisMonth: data.totalCallsThisMonth || 0,
-        totalMinutesThisMonth: data.totalMinutesThisMonth || 0,
-      });
-      
-      // Hide main loading spinner once stats are loaded
-      setLoading(false);
-
-      // Set detailed data (tables) - these can load slightly after
-      setRecentSignups(data.recentSignups || []);
-      setRecentCalls(data.recentCalls || []);
-      setTopClients(data.topClients || []);
-      setLoadingDetails(false);
+      const topClientsData: TopClient[] = usageRecords
+        .filter((u) => u.totalCalls > 0)
+        .sort((a, b) => b.totalCalls - a.totalCalls)
+        .slice(0, 5)
+        .map((u) => ({
+          orgId: u.orgId,
+          name: orgMap.get(u.orgId)?.name || "Unknown",
+          totalCalls: u.totalCalls,
+          totalMinutes: Math.round(u.totalMinutes * 100) / 100,
+          plan: orgMap.get(u.orgId)?.plan || "free",
+        }));
+      setTopClients(topClientsData);
     } catch (error) {
       console.error("[Admin Dashboard] Error loading stats:", error);
-      toast.error("Failed to load platform stats");
+      const errorMessage =
+        error instanceof Error && error.message === "Request timeout"
+          ? "Request timed out. Please try again."
+          : "Failed to load platform stats";
+      toast.error(errorMessage);
+    } finally {
       setLoading(false);
-      setLoadingDetails(false);
     }
   }
 
@@ -272,11 +307,7 @@ export default function AdminDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {loadingDetails ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : recentCalls.length === 0 ? (
+                {recentCalls.length === 0 ? (
                   <p className="text-muted-foreground text-center py-6">
                     No recent calls
                   </p>
@@ -348,11 +379,7 @@ export default function AdminDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {loadingDetails ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : topClients.length === 0 ? (
+                {topClients.length === 0 ? (
                   <p className="text-muted-foreground text-center py-6">
                     No usage data this month
                   </p>
@@ -461,11 +488,7 @@ export default function AdminDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent>
-                {loadingDetails ? (
-                  <div className="flex items-center justify-center py-6">
-                    <Loader2 className="size-5 animate-spin text-muted-foreground" />
-                  </div>
-                ) : recentSignups.length === 0 ? (
+                {recentSignups.length === 0 ? (
                   <p className="text-muted-foreground text-center py-6">
                     No recent signups
                   </p>

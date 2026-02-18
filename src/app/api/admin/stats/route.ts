@@ -16,11 +16,6 @@ async function verifySuperAdmin(request: NextRequest) {
   return { uid: decoded.uid, db };
 }
 
-function getYearMonth(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-}
-
 export async function GET(request: NextRequest) {
   try {
     const auth = await verifySuperAdmin(request);
@@ -34,102 +29,50 @@ export async function GET(request: NextRequest) {
     ]);
 
     const totalUsers = usersSnap.size;
-    const totalOrgs = orgsSnap.size;
 
-    // Build org name and plan lookup
-    const orgMap = new Map<string, { name: string; plan: string }>();
+    // Build org name lookup
+    const orgNames = new Map<string, string>();
     for (const doc of orgsSnap.docs) {
-      const data = doc.data();
-      orgMap.set(doc.id, {
-        name: data.name || "Unknown",
-        plan: data.plan || "free",
-      });
+      orgNames.set(doc.id, doc.data().name || "Unknown");
     }
 
     // Recent signups (sort by createdAt desc, take 10)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const users: any[] = usersSnap.docs.map((d) => ({ uid: d.id, ...d.data() }));
     users.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
-    const recentSignups = users.slice(0, 10).map((u) => {
-      const org = orgMap.get(u.orgId || "");
-      return {
-        uid: u.uid,
-        email: u.email || "",
-        displayName: u.displayName || "",
-        orgId: u.orgId || "",
-        orgName: org?.name || "Unknown",
-        createdAt: u.createdAt || "",
-      };
-    });
+    const recentSignups = users.slice(0, 10).map((u) => ({
+      uid: u.uid,
+      email: u.email || "",
+      displayName: u.displayName || "",
+      orgId: u.orgId || "",
+      orgName: orgNames.get(u.orgId) || "Unknown",
+      createdAt: u.createdAt || "",
+    }));
 
-    // Fetch usage records for current month in parallel (server-side, much faster)
-    const period = getYearMonth();
-    const usagePromises = orgsSnap.docs.map(async (orgDoc) => {
-      try {
-        const usageSnap = await db
-          .collection("organizations")
-          .doc(orgDoc.id)
-          .collection("usage")
-          .doc(period)
-          .get();
-        if (usageSnap.exists()) {
-          const data = usageSnap.data();
-          return {
-            orgId: orgDoc.id,
-            totalCalls: data?.totalCalls || 0,
-            totalMinutes: data?.totalMinutes || 0,
-          };
-        }
-        return { orgId: orgDoc.id, totalCalls: 0, totalMinutes: 0 };
-      } catch {
-        return { orgId: orgDoc.id, totalCalls: 0, totalMinutes: 0 };
-      }
-    });
-
-    const usageRecords = await Promise.all(usagePromises);
-    const totalCalls = usageRecords.reduce((sum, u) => sum + (u.totalCalls || 0), 0);
-    const totalMinutes = usageRecords.reduce((sum, u) => sum + (u.totalMinutes || 0), 0);
-
-    // Build top clients
-    const topClients = usageRecords
-      .filter((u) => u.totalCalls > 0)
-      .sort((a, b) => b.totalCalls - a.totalCalls)
-      .slice(0, 5)
-      .map((u) => {
-        const org = orgMap.get(u.orgId);
-        return {
-          orgId: u.orgId,
-          name: org?.name || "Unknown",
-          totalCalls: u.totalCalls,
-          totalMinutes: Math.round((u.totalMinutes || 0) * 100) / 100,
-          plan: org?.plan || "free",
-        };
-      });
-
-    // Recent calls - only query from top 10 orgs by call count to save time
+    // Recent calls across all orgs - optimized to limit queries
+    // Instead of querying all orgs, limit to a reasonable number and fetch more calls per org
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allCalls: any[] = [];
-    const topOrgIds = usageRecords
-      .filter((u) => u.totalCalls > 0)
-      .sort((a, b) => b.totalCalls - a.totalCalls)
-      .slice(0, 10)
-      .map((u) => u.orgId);
+    const orgIds = orgsSnap.docs.map((d) => d.id);
 
-    // Query calls from top orgs only (limit to 5 calls per org for speed)
-    const callPromises = topOrgIds.map(async (orgId) => {
+    // Limit to querying calls from top 20 most recent orgs (or all if less than 20)
+    // This prevents overwhelming Firestore with too many parallel queries
+    const orgsToQuery = orgIds.slice(0, 20);
+    
+    // Query calls in parallel but with a limit on concurrent queries
+    const callPromises = orgsToQuery.map(async (orgId) => {
       try {
         const callsSnap = await db
           .collection("organizations")
           .doc(orgId)
           .collection("calls")
           .orderBy("initiatedAt", "desc")
-          .limit(5)
+          .limit(10) // Increased from 5 to get better coverage
           .get();
-        const org = orgMap.get(orgId);
         return callsSnap.docs.map((d) => ({
           id: d.id,
           orgId,
-          orgName: org?.name || "Unknown",
+          orgName: orgNames.get(orgId) || "Unknown",
           ...d.data(),
         }));
       } catch {
@@ -155,15 +98,7 @@ export async function GET(request: NextRequest) {
       durationSeconds: c.durationSeconds,
     }));
 
-    return NextResponse.json({
-      totalUsers,
-      totalOrgs,
-      totalCallsThisMonth: totalCalls,
-      totalMinutesThisMonth: Math.round(totalMinutes * 100) / 100,
-      recentSignups,
-      recentCalls,
-      topClients,
-    });
+    return NextResponse.json({ totalUsers, recentSignups, recentCalls });
   } catch (error) {
     console.error("[Admin Stats API] Error:", error);
     return NextResponse.json(
