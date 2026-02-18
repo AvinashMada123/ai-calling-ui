@@ -126,13 +126,29 @@ export default function AdminDashboardPage() {
 
       const idToken = await user!.getIdToken();
 
-      // Fetch all data in parallel
-      const [orgs, usageRecords, statsRes] = await Promise.all([
+      // Fetch all data in parallel with timeout protection
+      const fetchPromise = Promise.all([
         getAllOrganizations(),
         getAllOrgsUsage(),
         fetch("/api/admin/stats", {
           headers: { Authorization: `Bearer ${idToken}` },
-        }).then((r) => (r.ok ? r.json() : null)),
+        }).then((r) => {
+          if (!r.ok) {
+            console.error("[Admin Dashboard] Stats API error:", r.status, r.statusText);
+            return null;
+          }
+          return r.json();
+        }),
+      ]);
+
+      // Add timeout to prevent indefinite loading (30 seconds)
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Request timeout")), 30000)
+      );
+
+      const [orgs, usageRecords, statsRes] = await Promise.race([
+        fetchPromise,
+        timeoutPromise,
       ]);
 
       const totalCalls = usageRecords.reduce((sum, u) => sum + (u.totalCalls ?? 0), 0);
@@ -167,8 +183,13 @@ export default function AdminDashboardPage() {
           plan: orgMap.get(u.orgId)?.plan || "free",
         }));
       setTopClients(topClientsData);
-    } catch {
-      toast.error("Failed to load platform stats");
+    } catch (error) {
+      console.error("[Admin Dashboard] Error loading stats:", error);
+      const errorMessage =
+        error instanceof Error && error.message === "Request timeout"
+          ? "Request timed out. Please try again."
+          : "Failed to load platform stats";
+      toast.error(errorMessage);
     } finally {
       setLoading(false);
     }
