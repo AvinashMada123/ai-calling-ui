@@ -29,7 +29,19 @@ export async function POST(request: NextRequest) {
     const orgId = await getOrgId(request);
     const db = getAdminDb();
     const { settings } = await request.json();
-    await db.collection("organizations").doc(orgId).update({ settings, updatedAt: new Date().toISOString() });
+
+    // Read current settings and merge to avoid overwriting existing fields
+    const orgDoc = await db.collection("organizations").doc(orgId).get();
+    const current = orgDoc.exists ? orgDoc.data()?.settings ?? {} : {};
+    const merged = {
+      ...current,
+      ...settings,
+      defaults: { ...(current.defaults ?? {}), ...(settings.defaults ?? {}) },
+      appearance: { ...(current.appearance ?? {}), ...(settings.appearance ?? {}) },
+      ai: { ...(current.ai ?? {}), ...(settings.ai ?? {}) },
+    };
+
+    await db.collection("organizations").doc(orgId).update({ settings: merged, updatedAt: new Date().toISOString() });
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[Settings API] POST error:", error);
