@@ -31,14 +31,18 @@ export async function getAllOrgsUsage(yearMonth?: string): Promise<UsageRecord[]
   // This reads all organizations then their usage for the given month
   const orgsSnap = await getDocs(collection(db, "organizations"));
   const period = yearMonth || getYearMonth();
-  const results: UsageRecord[] = [];
-  for (const orgDoc of orgsSnap.docs) {
+  
+  // Fetch all usage records in parallel instead of sequentially
+  const usagePromises = orgsSnap.docs.map(async (orgDoc) => {
     const usageSnap = await getDoc(doc(db, "organizations", orgDoc.id, "usage", period));
     if (usageSnap.exists()) {
-      results.push({ orgId: orgDoc.id, ...usageSnap.data() } as UsageRecord);
+      return { orgId: orgDoc.id, ...usageSnap.data() } as UsageRecord;
     }
-  }
-  return results;
+    return null;
+  });
+  
+  const results = await Promise.all(usagePromises);
+  return results.filter((r): r is UsageRecord => r !== null);
 }
 
 export async function incrementUsage(

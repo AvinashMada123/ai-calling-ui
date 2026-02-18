@@ -49,20 +49,25 @@ export async function GET(request: NextRequest) {
       createdAt: u.createdAt || "",
     }));
 
-    // Recent calls across all orgs (limit 5 per org, then merge top 10)
+    // Recent calls across all orgs - optimized to limit queries
+    // Instead of querying all orgs, limit to a reasonable number and fetch more calls per org
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const allCalls: any[] = [];
     const orgIds = orgsSnap.docs.map((d) => d.id);
 
-    // Query in batches to avoid overwhelming Firestore
-    const callPromises = orgIds.map(async (orgId) => {
+    // Limit to querying calls from top 20 most recent orgs (or all if less than 20)
+    // This prevents overwhelming Firestore with too many parallel queries
+    const orgsToQuery = orgIds.slice(0, 20);
+    
+    // Query calls in parallel but with a limit on concurrent queries
+    const callPromises = orgsToQuery.map(async (orgId) => {
       try {
         const callsSnap = await db
           .collection("organizations")
           .doc(orgId)
           .collection("calls")
           .orderBy("initiatedAt", "desc")
-          .limit(5)
+          .limit(10) // Increased from 5 to get better coverage
           .get();
         return callsSnap.docs.map((d) => ({
           id: d.id,
