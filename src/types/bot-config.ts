@@ -34,6 +34,9 @@ export interface BotConfig {
     warm: string;
     cold: string;
   };
+  personaEngineEnabled?: boolean;
+  productIntelligenceEnabled?: boolean;
+  socialProofEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
   createdBy: string;

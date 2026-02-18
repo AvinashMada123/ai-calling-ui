@@ -24,7 +24,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 
-type TabId = "prompt" | "context" | "questions" | "objections";
+import { PersonaTab } from "./persona-tab";
+import { ProductsTab } from "./products-tab";
+import { SocialProofTab } from "./social-proof-tab";
+
+type TabId = "prompt" | "context" | "questions" | "objections" | "persona" | "products" | "social-proof";
 
 async function apiBotConfigs(
   user: { getIdToken: () => Promise<string> },
@@ -62,6 +66,9 @@ export default function BotConfigEditorPage() {
   const [questions, setQuestions] = useState<BotQuestion[]>([]);
   const [objections, setObjections] = useState<BotObjection[]>([]);
   const [contextVariables, setContextVariables] = useState<BotContextVariables>({});
+  const [personaEngineEnabled, setPersonaEngineEnabled] = useState(false);
+  const [productIntelligenceEnabled, setProductIntelligenceEnabled] = useState(false);
+  const [socialProofEnabled, setSocialProofEnabled] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const populateConfig = useCallback((found: BotConfig) => {
@@ -71,6 +78,9 @@ export default function BotConfigEditorPage() {
     setQuestions([...found.questions].sort((a, b) => a.order - b.order));
     setObjections([...found.objections]);
     setContextVariables(found.contextVariables || {});
+    setPersonaEngineEnabled(found.personaEngineEnabled || false);
+    setProductIntelligenceEnabled(found.productIntelligenceEnabled || false);
+    setSocialProofEnabled(found.socialProofEnabled || false);
     setLoading(false);
     hasLoadedRef.current = true;
   }, []);
@@ -129,6 +139,9 @@ export default function BotConfigEditorPage() {
           objections,
           objectionKeywords,
           contextVariables,
+          personaEngineEnabled,
+          productIntelligenceEnabled,
+          socialProofEnabled,
         },
       });
       toast.success("Configuration saved successfully");
@@ -195,6 +208,9 @@ export default function BotConfigEditorPage() {
     { id: "context", label: "Context" },
     { id: "questions", label: "Questions" },
     { id: "objections", label: "Objections" },
+    { id: "persona", label: "Persona" },
+    { id: "products", label: "Products" },
+    { id: "social-proof", label: "Social Proof" },
   ];
 
   if (loading) {
@@ -234,7 +250,7 @@ export default function BotConfigEditorPage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 border-b">
+      <div className="flex gap-1 border-b overflow-x-auto">
         {tabs.map((tab) => (
           <button
             key={tab.id}
@@ -286,6 +302,30 @@ export default function BotConfigEditorPage() {
             onObjectionUpdate={handleObjectionUpdate}
             onAddObjection={handleAddObjection}
             onDeleteObjection={handleDeleteObjection}
+          />
+        )}
+        {activeTab === "persona" && user && (
+          <PersonaTab
+            orgId={orgId!}
+            user={user}
+            enabled={personaEngineEnabled}
+            onToggle={setPersonaEngineEnabled}
+          />
+        )}
+        {activeTab === "products" && user && (
+          <ProductsTab
+            orgId={orgId!}
+            user={user}
+            enabled={productIntelligenceEnabled}
+            onToggle={setProductIntelligenceEnabled}
+          />
+        )}
+        {activeTab === "social-proof" && user && (
+          <SocialProofTab
+            orgId={orgId!}
+            user={user}
+            enabled={socialProofEnabled}
+            onToggle={setSocialProofEnabled}
           />
         )}
       </motion.div>

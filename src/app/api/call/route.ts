@@ -66,6 +66,62 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Read persona, product, and social proof data if enabled
+    let personaPayload: Record<string, unknown> = {};
+    let productPayload: Record<string, unknown> = {};
+    let socialProofPayload: Record<string, unknown> = {};
+
+    if (orgId && configDoc) {
+      const orgRef = adminDb.collection("organizations").doc(orgId);
+
+      if (configDoc.personaEngineEnabled) {
+        const [personasSnap, situationsSnap] = await Promise.all([
+          orgRef.collection("personas").get(),
+          orgRef.collection("situations").get(),
+        ]);
+        const personas = personasSnap.docs.map((d) => d.data());
+        const situations = situationsSnap.docs.map((d) => d.data());
+        personaPayload = {
+          personas,
+          personaKeywords: personas.reduce((acc: Record<string, string[]>, p) => {
+            acc[p.name] = p.keywords || [];
+            return acc;
+          }, {}),
+          situations,
+          situationKeywords: situations.reduce((acc: Record<string, string[]>, s) => {
+            acc[s.name] = s.keywords || [];
+            return acc;
+          }, {}),
+        };
+      }
+
+      if (configDoc.productIntelligenceEnabled) {
+        const sectionsSnap = await orgRef.collection("productSections").get();
+        const productSections = sectionsSnap.docs.map((d) => d.data());
+        productPayload = {
+          productSections,
+          productKeywords: productSections.reduce((acc: Record<string, string[]>, s) => {
+            acc[s.name] = s.keywords || [];
+            return acc;
+          }, {}),
+        };
+      }
+
+      if (configDoc.socialProofEnabled) {
+        const spRef = orgRef.collection("socialProof");
+        const [companiesDoc, citiesDoc, rolesDoc] = await Promise.all([
+          spRef.doc("companies").get(),
+          spRef.doc("cities").get(),
+          spRef.doc("roles").get(),
+        ]);
+        socialProofPayload = {
+          socialProofCompanies: companiesDoc.exists ? (companiesDoc.data()?.items || []) : [],
+          socialProofCities: citiesDoc.exists ? (citiesDoc.data()?.items || []) : [],
+          socialProofRoles: rolesDoc.exists ? (rolesDoc.data()?.items || []) : [],
+        };
+      }
+    }
+
     // Build context: bot config context variables take priority (form fields are
     // hidden when a bot config is selected, so payload values are stale defaults)
     const ctx = configDoc?.contextVariables || {};
@@ -117,6 +173,9 @@ export async function POST(request: NextRequest) {
       callEndWebhookUrl,
       context,
       ...botConfigPayload,
+      ...personaPayload,
+      ...productPayload,
+      ...socialProofPayload,
     };
 
     if (ghlWhatsappWebhookUrl) {
