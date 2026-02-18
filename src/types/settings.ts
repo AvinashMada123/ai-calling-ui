@@ -12,6 +12,9 @@ export interface AppSettings {
   ghlWhatsappWebhookUrl: string;
   ghlApiKey: string;
   ghlLocationId: string;
+  plivoAuthId: string;
+  plivoAuthToken: string;
+  plivoPhoneNumber: string;
   appearance: {
     sidebarCollapsed: boolean;
     animationsEnabled: boolean;

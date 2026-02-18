@@ -43,6 +43,13 @@ export function SettingsForm() {
   const [ghlLocationId, setGhlLocationId] = useState(
     settings.ghlLocationId || ""
   );
+  const [plivoAuthId, setPlivoAuthId] = useState(settings.plivoAuthId || "");
+  const [plivoAuthToken, setPlivoAuthToken] = useState(
+    settings.plivoAuthToken || ""
+  );
+  const [plivoPhoneNumber, setPlivoPhoneNumber] = useState(
+    settings.plivoPhoneNumber || ""
+  );
   const [autoQualify, setAutoQualify] = useState(
     settings.ai?.autoQualify ?? true
   );
@@ -79,6 +86,9 @@ export function SettingsForm() {
     setGhlWhatsappWebhookUrl(settings.ghlWhatsappWebhookUrl || "");
     setGhlApiKey(settings.ghlApiKey || "");
     setGhlLocationId(settings.ghlLocationId || "");
+    setPlivoAuthId(settings.plivoAuthId || "");
+    setPlivoAuthToken(settings.plivoAuthToken || "");
+    setPlivoPhoneNumber(settings.plivoPhoneNumber || "");
     setAutoQualify(settings.ai?.autoQualify ?? true);
     setAnimationsEnabled(settings.appearance.animationsEnabled);
   }, [settings]);
@@ -98,6 +108,9 @@ export function SettingsForm() {
       ghlWhatsappWebhookUrl,
       ghlApiKey,
       ghlLocationId,
+      plivoAuthId,
+      plivoAuthToken,
+      plivoPhoneNumber,
       ai: {
         autoQualify,
       },
@@ -282,7 +295,60 @@ export function SettingsForm() {
         </Card>
       </motion.div>
 
-      {/* Section 3: AI Lead Qualification */}
+      {/* Section 3: Plivo Configuration */}
+      <motion.div variants={itemVariants}>
+        <Card>
+          <CardHeader>
+            <CardTitle>Plivo Configuration</CardTitle>
+            <CardDescription>
+              Configure your Plivo credentials for voice calling
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="plivoAuthId">Plivo Auth ID</Label>
+                <Input
+                  id="plivoAuthId"
+                  value={plivoAuthId}
+                  onChange={(e) => setPlivoAuthId(e.target.value)}
+                  placeholder="MAXXXXXXXXXXXXXXXX"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your Plivo Auth ID from the Plivo dashboard
+                </p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="plivoAuthToken">Plivo Auth Token</Label>
+                <Input
+                  id="plivoAuthToken"
+                  type="password"
+                  value={plivoAuthToken}
+                  onChange={(e) => setPlivoAuthToken(e.target.value)}
+                  placeholder="Your auth token"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your Plivo Auth Token (keep this secure)
+                </p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="plivoPhoneNumber">Plivo Phone Number</Label>
+              <Input
+                id="plivoPhoneNumber"
+                value={plivoPhoneNumber}
+                onChange={(e) => setPlivoPhoneNumber(e.target.value)}
+                placeholder="+1234567890"
+              />
+              <p className="text-xs text-muted-foreground">
+                Your Plivo phone number (E.164 format, e.g., +1234567890)
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Section 4: AI Lead Qualification */}
       <motion.div variants={itemVariants}>
         <Card>
           <CardHeader>
@@ -337,7 +403,7 @@ export function SettingsForm() {
         </Card>
       </motion.div>
 
-      {/* Section 4: Appearance */}
+      {/* Section 5: Appearance */}
       <motion.div variants={itemVariants}>
         <Card>
           <CardHeader>
