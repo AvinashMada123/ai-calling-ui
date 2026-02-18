@@ -301,7 +301,7 @@ export function SettingsForm() {
           <CardHeader>
             <CardTitle>Plivo Configuration</CardTitle>
             <CardDescription>
-              Configure your Plivo credentials for voice calling
+              Configure your Plivo credentials for voice calling. If not set, system defaults will be used.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">

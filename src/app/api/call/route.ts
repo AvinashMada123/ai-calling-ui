@@ -85,10 +85,13 @@ export async function POST(request: NextRequest) {
     const protocol = host.includes("localhost") ? "http" : "https";
     const callEndWebhookUrl = `${protocol}://${host}/api/call-ended${orgId ? `?orgId=${orgId}` : ""}`;
 
-    // Read GHL settings from org settings (if configured)
+    // Read org settings (GHL + Plivo) from Firestore
     let ghlWhatsappWebhookUrl = "";
     let ghlApiKey = "";
     let ghlLocationId = "";
+    let plivoAuthId = "";
+    let plivoAuthToken = "";
+    let plivoPhoneNumber = "";
     if (orgId) {
       const orgDoc = await adminDb.collection("organizations").doc(orgId).get();
       if (orgDoc.exists) {
@@ -96,6 +99,9 @@ export async function POST(request: NextRequest) {
         ghlWhatsappWebhookUrl = orgSettings?.ghlWhatsappWebhookUrl || "";
         ghlApiKey = orgSettings?.ghlApiKey || "";
         ghlLocationId = orgSettings?.ghlLocationId || "";
+        plivoAuthId = orgSettings?.plivoAuthId || "";
+        plivoAuthToken = orgSettings?.plivoAuthToken || "";
+        plivoPhoneNumber = orgSettings?.plivoPhoneNumber || "";
       }
     }
 
@@ -121,6 +127,13 @@ export async function POST(request: NextRequest) {
     }
     if (ghlLocationId) {
       callServerPayload.ghlLocationId = ghlLocationId;
+    }
+    if (plivoAuthId && plivoAuthToken) {
+      callServerPayload.plivoAuthId = plivoAuthId;
+      callServerPayload.plivoAuthToken = plivoAuthToken;
+    }
+    if (plivoPhoneNumber) {
+      callServerPayload.plivoPhoneNumber = plivoPhoneNumber;
     }
 
     const payloadJson = JSON.stringify(callServerPayload, null, 2);
