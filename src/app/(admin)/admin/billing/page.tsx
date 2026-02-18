@@ -12,10 +12,6 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import { getAllOrganizations } from "@/lib/firestore/organizations";
-import { getAllOrgsUsage } from "@/lib/firestore/usage";
-import type { Organization } from "@/types/user";
-import type { UsageRecord } from "@/types/billing";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -46,7 +42,7 @@ interface BillingRow {
 }
 
 export default function AdminBillingPage() {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const [rows, setRows] = useState<BillingRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,39 +50,45 @@ export default function AdminBillingPage() {
   const totalMinutes = rows.reduce((sum, r) => sum + r.minutesUsed, 0);
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!isSuperAdmin || !user) return;
     loadBilling();
-  }, [isSuperAdmin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, user]);
 
   async function loadBilling() {
     try {
       setLoading(true);
-      const [orgs, usageRecords] = await Promise.all([
-        getAllOrganizations(),
-        getAllOrgsUsage(),
-      ]);
+      
+      const idToken = await user!.getIdToken();
+      
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const usageMap = new Map<string, UsageRecord>();
-      for (const u of usageRecords) {
-        usageMap.set(u.orgId, u);
+      try {
+        const response = await fetch("/api/admin/billing", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Failed to load billing data: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        setRows(data.rows || []);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === "AbortError") {
+          toast.error("Request timed out. Please try again.");
+        } else {
+          throw fetchError;
+        }
       }
-
-      const result: BillingRow[] = orgs.map((org) => {
-        const u = usageMap.get(org.id);
-        const minutes = Math.round((u?.totalMinutes ?? 0) * 100) / 100;
-        return {
-          orgId: org.id,
-          orgName: org.name,
-          plan: org.plan,
-          minutesUsed: minutes,
-          estimatedCost: Math.round(minutes * COST_PER_MINUTE * 100) / 100,
-        };
-      });
-
-      // Sort by estimated cost descending
-      result.sort((a, b) => b.estimatedCost - a.estimatedCost);
-      setRows(result);
     } catch (err) {
+      console.error("[Billing Page] Error:", err);
       toast.error("Failed to load billing data");
     } finally {
       setLoading(false);

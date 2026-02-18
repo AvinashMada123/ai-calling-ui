@@ -13,10 +13,6 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import { getAllOrganizations } from "@/lib/firestore/organizations";
-import { getAllOrgsUsage } from "@/lib/firestore/usage";
-import type { Organization } from "@/types/user";
-import type { UsageRecord } from "@/types/billing";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -39,7 +35,7 @@ interface OrgUsageRow {
 }
 
 export default function AdminUsagePage() {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const [rows, setRows] = useState<OrgUsageRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,44 +50,45 @@ export default function AdminUsagePage() {
   );
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!isSuperAdmin || !user) return;
     loadUsage();
-  }, [isSuperAdmin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, user]);
 
   async function loadUsage() {
     try {
       setLoading(true);
-      const [orgs, usageRecords] = await Promise.all([
-        getAllOrganizations(),
-        getAllOrgsUsage(),
-      ]);
+      
+      const idToken = await user!.getIdToken();
+      
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-      const orgMap = new Map<string, Organization>();
-      for (const org of orgs) {
-        orgMap.set(org.id, org);
+      try {
+        const response = await fetch("/api/admin/usage", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Failed to load usage data: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        setRows(data.rows || []);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === "AbortError") {
+          toast.error("Request timed out. Please try again.");
+        } else {
+          throw fetchError;
+        }
       }
-
-      const usageMap = new Map<string, UsageRecord>();
-      for (const u of usageRecords) {
-        usageMap.set(u.orgId, u);
-      }
-
-      const result: OrgUsageRow[] = orgs.map((org) => {
-        const u = usageMap.get(org.id);
-        return {
-          orgId: org.id,
-          orgName: org.name,
-          totalCalls: u?.totalCalls ?? 0,
-          totalMinutes: Math.round((u?.totalMinutes ?? 0) * 100) / 100,
-          completedCalls: u?.completedCalls ?? 0,
-          failedCalls: u?.failedCalls ?? 0,
-        };
-      });
-
-      // Sort by total calls descending
-      result.sort((a, b) => b.totalCalls - a.totalCalls);
-      setRows(result);
     } catch (err) {
+      console.error("[Usage Page] Error:", err);
       toast.error("Failed to load usage data");
     } finally {
       setLoading(false);
