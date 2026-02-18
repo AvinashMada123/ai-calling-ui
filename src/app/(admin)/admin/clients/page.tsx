@@ -7,7 +7,6 @@ import { Building2, Search, Loader2, ExternalLink, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import { getAllOrganizations } from "@/lib/firestore/organizations";
 import type { Organization } from "@/types/user";
 
 import { Button } from "@/components/ui/button";
@@ -67,16 +66,45 @@ export default function AdminClientsPage() {
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!isSuperAdmin || !user) return;
     loadOrgs();
-  }, [isSuperAdmin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, user]);
 
   async function loadOrgs() {
     try {
       setLoading(true);
-      const data = await getAllOrganizations();
-      setOrgs(data);
-    } catch {
+      
+      const idToken = await user!.getIdToken();
+      
+      // Create AbortController for timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000);
+
+      try {
+        const response = await fetch("/api/admin/clients", {
+          headers: { Authorization: `Bearer ${idToken}` },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          throw new Error(`Failed to load organizations: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        setOrgs(data.orgs || []);
+      } catch (fetchError) {
+        clearTimeout(timeoutId);
+        if (fetchError instanceof Error && fetchError.name === "AbortError") {
+          toast.error("Request timed out. Please try again.");
+        } else {
+          throw fetchError;
+        }
+      }
+    } catch (err) {
+      console.error("[Clients Page] Error:", err);
       toast.error("Failed to load organizations");
     } finally {
       setLoading(false);
