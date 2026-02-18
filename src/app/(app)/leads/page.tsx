@@ -1,19 +1,87 @@
 "use client";
 
-import { useState } from "react";
-import { Upload, Plus } from "lucide-react";
+import { useState, useCallback } from "react";
+import { Upload, Plus, RefreshCw, Settings } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import { LeadsToolbar } from "@/components/leads/leads-toolbar";
 import { LeadsTable } from "@/components/leads/leads-table";
 import { LeadsPagination } from "@/components/leads/leads-pagination";
 import { LeadUploadModal } from "@/components/leads/lead-upload-modal";
 import { AddLeadDialog } from "@/components/leads/add-lead-dialog";
 import { useLeads } from "@/hooks/use-leads";
+import { useSettings } from "@/hooks/use-settings";
+import { useAuthContext } from "@/context/auth-context";
+import { toast } from "sonner";
 
 export default function LeadsPage() {
-  const { totalLeads } = useLeads();
+  const { totalLeads, mergeGhlLeads } = useLeads();
+  const { settings, updateSettings } = useSettings();
+  const { user } = useAuthContext();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+
+  const ghlConfigured = !!(settings.ghlApiKey && settings.ghlLocationId);
+  const ghlSyncEnabled = settings.ghlSyncEnabled ?? false;
+
+  const handleToggleGhlSync = (checked: boolean) => {
+    updateSettings({ ghlSyncEnabled: checked });
+  };
+
+  const handleSync = useCallback(async () => {
+    if (!user) return;
+    setSyncing(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/data/ghl-contacts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ action: "sync" }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(data.message || "Failed to sync GHL contacts");
+        return;
+      }
+
+      // Update last sync time in settings
+      updateSettings({ ghlLastSyncAt: data.ghlLastSyncAt });
+
+      // Reload leads from server to get the synced data
+      const leadsRes = await fetch("/api/data/leads", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const leadsData = await leadsRes.json();
+      if (leadsData.leads) {
+        mergeGhlLeads(
+          leadsData.leads.filter(
+            (l: { source: string }) => l.source === "ghl"
+          )
+        );
+      }
+
+      toast.success(`Synced ${data.synced} contacts from GoHighLevel`);
+    } catch (error) {
+      console.error("GHL sync error:", error);
+      toast.error("Failed to sync GHL contacts");
+    } finally {
+      setSyncing(false);
+    }
+  }, [user, updateSettings, mergeGhlLeads]);
+
+  const formatLastSync = (dateStr?: string) => {
+    if (!dateStr) return null;
+    const date = new Date(dateStr);
+    return date.toLocaleString();
+  };
 
   return (
     <div className="space-y-6">
@@ -35,6 +103,56 @@ export default function LeadsPage() {
             <Plus className="mr-2 h-4 w-4" /> Add Lead
           </Button>
         </div>
+      </div>
+
+      {/* GHL Sync Section */}
+      <div className="flex items-center gap-4 rounded-lg border p-4">
+        <div className="flex items-center gap-2">
+          <Switch
+            id="ghl-sync"
+            checked={ghlSyncEnabled}
+            onCheckedChange={handleToggleGhlSync}
+          />
+          <Label htmlFor="ghl-sync" className="font-medium">
+            Sync from GoHighLevel
+          </Label>
+        </div>
+
+        {ghlSyncEnabled && (
+          <div className="flex items-center gap-3">
+            {ghlConfigured ? (
+              <>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleSync}
+                  disabled={syncing}
+                >
+                  <RefreshCw
+                    className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                  />
+                  {syncing ? "Syncing..." : "Sync Now"}
+                </Button>
+                {settings.ghlLastSyncAt && (
+                  <span className="text-sm text-muted-foreground">
+                    Last synced: {formatLastSync(settings.ghlLastSyncAt)}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span className="text-sm text-muted-foreground">
+                Configure GHL API key in{" "}
+                <Link
+                  href="/settings"
+                  className="text-primary underline underline-offset-4"
+                >
+                  <Settings className="mr-1 inline h-3 w-3" />
+                  Settings
+                </Link>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       <LeadsToolbar />

@@ -65,6 +65,8 @@ export function LeadsTable() {
         return "Excel";
       case "manual":
         return "Manual";
+      case "ghl":
+        return "GHL";
       default:
         return source;
     }
@@ -90,6 +92,7 @@ export function LeadsTable() {
             <TableHead>Status</TableHead>
             <TableHead>Qualification</TableHead>
             <TableHead>Source</TableHead>
+            <TableHead>Tags</TableHead>
             <TableHead>Calls</TableHead>
             <TableHead className="w-[70px]">Actions</TableHead>
           </TableRow>
@@ -135,6 +138,24 @@ export function LeadsTable() {
                 <Badge variant="secondary" className="text-xs">
                   {sourceLabel(lead.source)}
                 </Badge>
+              </TableCell>
+              <TableCell>
+                {lead.tags && lead.tags.length > 0 ? (
+                  <div className="flex flex-wrap gap-1">
+                    {lead.tags.slice(0, 2).map((tag) => (
+                      <Badge key={tag} variant="outline" className="text-xs">
+                        {tag}
+                      </Badge>
+                    ))}
+                    {lead.tags.length > 2 && (
+                      <Badge variant="outline" className="text-xs text-muted-foreground">
+                        +{lead.tags.length - 2}
+                      </Badge>
+                    )}
+                  </div>
+                ) : (
+                  <span className="text-muted-foreground">-</span>
+                )}
               </TableCell>
               <TableCell>{lead.callCount}</TableCell>
               <TableCell>

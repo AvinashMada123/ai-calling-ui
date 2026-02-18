@@ -29,12 +29,14 @@ type LeadsAction =
   | { type: "TOGGLE_SELECT"; payload: string }
   | { type: "SELECT_ALL"; payload: string[] }
   | { type: "DESELECT_ALL" }
-  | { type: "INCREMENT_CALL_COUNT"; payload: string };
+  | { type: "INCREMENT_CALL_COUNT"; payload: string }
+  | { type: "MERGE_GHL_LEADS"; payload: Lead[] };
 
 const initialFilters: LeadFilters = {
   search: "",
   status: "all",
   source: "all",
+  tag: "all",
 };
 
 function leadsReducer(state: LeadsState, action: LeadsAction): LeadsState {
@@ -118,6 +120,24 @@ function leadsReducer(state: LeadsState, action: LeadsAction): LeadsState {
             : l
         ),
       };
+    case "MERGE_GHL_LEADS": {
+      const incoming = action.payload;
+      const existingGhlIds = new Map(
+        state.leads
+          .filter((l) => l.ghlContactId)
+          .map((l) => [l.ghlContactId!, l.id])
+      );
+      const updatedLeads = state.leads.map((l) => {
+        if (!l.ghlContactId) return l;
+        const match = incoming.find((g) => g.ghlContactId === l.ghlContactId);
+        if (match) return { ...l, ...match, id: l.id, status: l.status, callCount: l.callCount };
+        return l;
+      });
+      const newLeads = incoming.filter(
+        (g) => !existingGhlIds.has(g.ghlContactId!)
+      );
+      return { ...state, leads: [...newLeads, ...updatedLeads] };
+    }
     default:
       return state;
   }

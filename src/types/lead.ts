@@ -13,7 +13,8 @@ export interface Lead {
   lastCallDate?: string;
   createdAt: string;
   updatedAt: string;
-  source: "manual" | "csv" | "excel";
+  source: "manual" | "csv" | "excel" | "ghl";
+  ghlContactId?: string;
   qualificationLevel?: QualificationLevel;
   qualificationConfidence?: number;
   lastQualifiedAt?: string;
@@ -30,6 +31,7 @@ export interface LeadFilters {
   search: string;
   status: LeadStatus | "all";
   source: Lead["source"] | "all";
+  tag: string;
 }
 
 export interface ColumnMapping {

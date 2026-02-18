@@ -94,6 +94,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ai: {
     autoQualify: true,
   },
+  ghlSyncEnabled: false,
+  ghlLastSyncAt: "",
 };
 
 export const MAPPABLE_FIELDS = [

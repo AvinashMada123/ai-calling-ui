@@ -19,6 +19,9 @@ export function useLeads() {
     if (state.filters.source !== "all") {
       result = result.filter((l) => l.source === state.filters.source);
     }
+    if (state.filters.tag && state.filters.tag !== "all") {
+      result = result.filter((l) => l.tags?.includes(state.filters.tag));
+    }
     if (state.filters.search) {
       const q = state.filters.search.toLowerCase();
       result = result.filter(
@@ -32,6 +35,18 @@ export function useLeads() {
 
     return result;
   }, [state.leads, state.filters]);
+
+  const allTags = useMemo(() => {
+    const tagSet = new Set<string>();
+    for (const lead of state.leads) {
+      if (lead.tags) {
+        for (const tag of lead.tags) {
+          tagSet.add(tag);
+        }
+      }
+    }
+    return Array.from(tagSet).sort();
+  }, [state.leads]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLeads.length / ITEMS_PER_PAGE));
   const paginatedLeads = filteredLeads.slice(
@@ -92,6 +107,11 @@ export function useLeads() {
       dispatch({ type: "INCREMENT_CALL_COUNT", payload: id });
     },
 
+    mergeGhlLeads: (leads: Lead[]) => {
+      dispatch({ type: "MERGE_GHL_LEADS", payload: leads });
+    },
+
+    allTags,
     totalLeads: state.leads.length,
     newLeads: state.leads.filter((l) => l.status === "new").length,
     contactedLeads: state.leads.filter((l) => l.status === "contacted").length,

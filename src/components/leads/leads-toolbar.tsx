@@ -24,7 +24,7 @@ import type { CallRequest } from "@/types/call";
 const MAX_CONCURRENT = 5;
 
 export function LeadsToolbar() {
-  const { leads, filters, setFilters, selectedIds, deleteLeads, deselectAll, incrementCallCount } =
+  const { leads, filters, setFilters, selectedIds, deleteLeads, deselectAll, incrementCallCount, allTags } =
     useLeads();
   const { settings } = useSettings();
   const { initiateCall } = useCalls();
@@ -159,8 +159,28 @@ export function LeadsToolbar() {
               <SelectItem value="manual">Manual</SelectItem>
               <SelectItem value="csv">CSV</SelectItem>
               <SelectItem value="excel">Excel</SelectItem>
+              <SelectItem value="ghl">GoHighLevel</SelectItem>
             </SelectContent>
           </Select>
+
+          {allTags.length > 0 && (
+            <Select
+              value={filters.tag}
+              onValueChange={(value) => setFilters({ tag: value })}
+            >
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Tag" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Tags</SelectItem>
+                {allTags.map((tag) => (
+                  <SelectItem key={tag} value={tag}>
+                    {tag}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         </div>
 
         <AnimatePresence>
