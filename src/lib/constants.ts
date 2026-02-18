@@ -84,6 +84,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   ghlWhatsappWebhookUrl: "",
   ghlApiKey: "",
   ghlLocationId: "",
+  plivoAuthId: "",
+  plivoAuthToken: "",
+  plivoPhoneNumber: "",
   appearance: {
     sidebarCollapsed: false,
     animationsEnabled: true,
