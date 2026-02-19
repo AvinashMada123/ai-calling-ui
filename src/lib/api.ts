@@ -1,7 +1,8 @@
 import type { ApiCallPayload, ApiCallResponse } from "@/types/api";
 
 export async function triggerCall(
-  payload: ApiCallPayload
+  payload: ApiCallPayload,
+  leadId?: string
 ): Promise<ApiCallResponse> {
   // When a bot config is selected, strip context fields — the server resolves
   // them from the bot config's contextVariables.  Form fields are hidden so any
@@ -13,6 +14,11 @@ export async function triggerCall(
     delete cleanPayload.eventName;
     delete cleanPayload.eventHost;
     delete cleanPayload.location;
+  }
+
+  // Include leadId so the backend can look up bot notes
+  if (leadId) {
+    cleanPayload.leadId = leadId;
   }
 
   console.log("[triggerCall] Sending payload:", JSON.stringify(cleanPayload, null, 2));
@@ -33,4 +39,23 @@ export async function triggerCall(
   }
 
   return data;
+}
+
+/**
+ * Tell the backend to hang up a call by UUID.
+ * Used when the user manually marks a call as complete/failed/no-answer.
+ */
+export async function hangupCall(callUuid: string): Promise<void> {
+  if (!callUuid) return;
+  try {
+    await fetch("/api/call-hangup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callUuid }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    // Best-effort — don't fail if the backend is unreachable
+    console.warn(`[hangupCall] Failed to hang up ${callUuid}`);
+  }
 }

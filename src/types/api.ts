@@ -9,6 +9,7 @@ export interface ApiCallPayload {
   voice: string;
   location: string;
   botConfigId?: string;
+  leadId?: string;
 }
 
 export interface ApiCallResponse {

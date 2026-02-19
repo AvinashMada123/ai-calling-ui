@@ -181,6 +181,7 @@ export async function POST(request: NextRequest) {
       preResearchEnabled: configDoc?.pre_research_enabled ?? false,
       memoryRecallEnabled: configDoc?.memory_recall_enabled ?? false,
       ...(botNotes ? { botNotes } : {}),
+      ...(payload.voice ? { voice: payload.voice } : {}),
     };
 
     if (ghlWhatsappWebhookUrl) callServerPayload.ghlWhatsappWebhookUrl = ghlWhatsappWebhookUrl;

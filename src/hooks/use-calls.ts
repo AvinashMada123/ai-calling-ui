@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useRef, useCallback } from "react";
 import { useCallsContext } from "@/context/calls-context";
-import { triggerCall } from "@/lib/api";
+import { triggerCall, hangupCall } from "@/lib/api";
 import { generateId } from "@/lib/utils";
 import type { CallRequest, CallRecord, CallStatus, CallResponse, CallEndedData } from "@/types/call";
 import { toast } from "sonner";
@@ -125,7 +125,7 @@ export function useCalls() {
     dispatch({ type: "SET_ACTIVE_CALL", payload: callRecord });
 
     try {
-      const response = await triggerCall(request);
+      const response = await triggerCall(request, leadId);
       dispatch({
         type: "UPDATE_CALL",
         payload: {
@@ -157,12 +157,20 @@ export function useCalls() {
   };
 
   const updateCallStatus = (callId: string, status: CallStatus) => {
+    // Find the call to get its UUID for hangup
+    const call = state.calls.find((c) => c.id === callId);
+
     dispatch({
       type: "UPDATE_CALL",
       payload: { id: callId, updates: { status } },
     });
     if (status === "completed" || status === "failed" || status === "no-answer") {
       dispatch({ type: "CLEAR_ACTIVE_CALL" });
+
+      // Tell the backend to hang up the Plivo call (prevents silent repeat calls)
+      if (call?.callUuid) {
+        hangupCall(call.callUuid);
+      }
     }
   };
 
