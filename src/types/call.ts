@@ -43,6 +43,7 @@ export interface CallEndedData {
   triggered_situations?: string[];
   triggered_product_sections?: string[];
   social_proof_used?: boolean;
+  no_answer?: boolean;
 }
 
 export interface QuestionPair {

@@ -23,12 +23,19 @@ export function useCalls() {
       const match = state.calls.find((c) => c.callUuid === data.call_uuid);
       if (!match) return;
 
+      // Don't re-apply if call is already in a terminal state
+      if (match.status === "completed" || match.status === "no-answer" || match.status === "failed") return;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const isNoAnswer = !!(data as any).no_answer || data.duration_seconds === 0 && data.call_summary === "Call was not answered";
+      const newStatus: CallStatus = isNoAnswer ? "no-answer" : "completed";
+
       dispatch({
         type: "UPDATE_CALL",
         payload: {
           id: match.id,
           updates: {
-            status: "completed" as CallStatus,
+            status: newStatus,
             endedData: data,
             durationSeconds: data.duration_seconds,
             interestLevel: data.interest_level,
@@ -42,9 +49,15 @@ export function useCalls() {
         dispatch({ type: "CLEAR_ACTIVE_CALL" });
       }
 
-      toast.success("Call completed!", {
-        description: `${data.contact_name} — ${data.duration_seconds}s, Interest: ${data.interest_level}`,
-      });
+      if (isNoAnswer) {
+        toast.info("Call not answered", {
+          description: `${data.contact_name || "Contact"} did not pick up`,
+        });
+      } else {
+        toast.success("Call completed!", {
+          description: `${data.contact_name} — ${data.duration_seconds}s, Interest: ${data.interest_level}`,
+        });
+      }
     },
     [state.calls, state.activeCall, dispatch]
   );
