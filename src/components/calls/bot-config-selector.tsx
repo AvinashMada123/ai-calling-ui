@@ -16,7 +16,7 @@ import type { BotConfig } from "@/types/bot-config";
 
 interface BotConfigSelectorProps {
   value: string;
-  onChange: (value: string) => void;
+  onChange: (value: string, config?: BotConfig) => void;
 }
 
 export function BotConfigSelector({ value, onChange }: BotConfigSelectorProps) {
@@ -34,7 +34,7 @@ export function BotConfigSelector({ value, onChange }: BotConfigSelectorProps) {
       setConfigs(data);
       if (!value) {
         const active = data.find((c) => c.isActive);
-        if (active) onChange(active.id);
+        if (active) onChange(active.id, active);
       }
       setLoading(false);
       return;
@@ -55,7 +55,7 @@ export function BotConfigSelector({ value, onChange }: BotConfigSelectorProps) {
         setConfigs(data);
         if (!value) {
           const active = data.find((c) => c.isActive);
-          if (active) onChange(active.id);
+          if (active) onChange(active.id, active);
         }
       } catch {
         // silent failure — configs list stays empty
@@ -94,7 +94,10 @@ export function BotConfigSelector({ value, onChange }: BotConfigSelectorProps) {
   return (
     <div className="space-y-2">
       <Label>Bot Config</Label>
-      <Select value={value} onValueChange={onChange}>
+      <Select value={value} onValueChange={(v) => {
+        const selected = configs.find((c) => c.id === v);
+        onChange(v, selected);
+      }}>
         <SelectTrigger className="w-full">
           <SelectValue placeholder="Select a bot config" />
         </SelectTrigger>

@@ -128,15 +128,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Build context
+    // Build context — UI call form values take priority over DB-stored defaults
     const ctx = configDoc?.context_variables || configDoc?.contextVariables || {};
     const context = {
       customer_name: payload.contactName || "Customer",
-      agent_name: ctx.agentName || payload.agentName || "Agent",
-      company_name: ctx.companyName || payload.companyName || "",
-      event_name: ctx.eventName || payload.eventName || "",
-      event_host: ctx.eventHost || payload.eventHost || "",
-      location: ctx.location || payload.location || "",
+      agent_name: payload.agentName || ctx.agentName || "Agent",
+      company_name: payload.companyName || ctx.companyName || "",
+      event_name: payload.eventName || ctx.eventName || "",
+      event_host: payload.eventHost || ctx.eventHost || "",
+      location: payload.location || ctx.location || "",
     };
 
     const host = request.headers.get("host") || "localhost:3000";
