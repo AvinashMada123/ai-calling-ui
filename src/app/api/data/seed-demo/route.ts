@@ -188,25 +188,29 @@ export async function POST(request: NextRequest) {
     await productBatch.commit();
     console.log(`[Seed] Seeded ${PRODUCT_SECTIONS.length} product sections`);
 
-    // Seed Social Proof
+    // Seed Social Proof (stored as single docs with items arrays)
+    const spRef = db.collection("organizations").doc(orgId).collection("socialProof");
+
+    const companiesWithIds = SOCIAL_PROOF_COMPANIES.map((c, i) => ({
+      id: `company_${i + 1}`,
+      ...c,
+    }));
+    const citiesWithIds = SOCIAL_PROOF_CITIES.map((c, i) => ({
+      id: `city_${i + 1}`,
+      ...c,
+    }));
+    const rolesWithIds = SOCIAL_PROOF_ROLES.map((r, i) => ({
+      id: `role_${i + 1}`,
+      ...r,
+    }));
+
     const socialBatch = db.batch();
-    for (const company of SOCIAL_PROOF_COMPANIES) {
-      const ref = db.collection("organizations").doc(orgId).collection("socialProofCompanies").doc();
-      socialBatch.set(ref, { id: ref.id, ...company });
-      totalSeeded++;
-    }
-    for (const city of SOCIAL_PROOF_CITIES) {
-      const ref = db.collection("organizations").doc(orgId).collection("socialProofCities").doc();
-      socialBatch.set(ref, { id: ref.id, ...city });
-      totalSeeded++;
-    }
-    for (const role of SOCIAL_PROOF_ROLES) {
-      const ref = db.collection("organizations").doc(orgId).collection("socialProofRoles").doc();
-      socialBatch.set(ref, { id: ref.id, ...role });
-      totalSeeded++;
-    }
+    socialBatch.set(spRef.doc("companies"), { items: companiesWithIds });
+    socialBatch.set(spRef.doc("cities"), { items: citiesWithIds });
+    socialBatch.set(spRef.doc("roles"), { items: rolesWithIds });
     await socialBatch.commit();
-    console.log(`[Seed] Seeded ${SOCIAL_PROOF_COMPANIES.length} companies, ${SOCIAL_PROOF_CITIES.length} cities, ${SOCIAL_PROOF_ROLES.length} roles`);
+    totalSeeded += companiesWithIds.length + citiesWithIds.length + rolesWithIds.length;
+    console.log(`[Seed] Seeded ${companiesWithIds.length} companies, ${citiesWithIds.length} cities, ${rolesWithIds.length} roles`);
 
     return NextResponse.json({
       success: true,
