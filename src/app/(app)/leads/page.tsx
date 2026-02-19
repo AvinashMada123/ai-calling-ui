@@ -81,7 +81,7 @@ export default function LeadsPage() {
       const token = await user.getIdToken();
 
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 180000); // 3 min timeout
+      const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout (matches server maxDuration)
 
       toast.loading("Fetching contacts from GoHighLevel... This may take a minute.", { id: toastId });
 
