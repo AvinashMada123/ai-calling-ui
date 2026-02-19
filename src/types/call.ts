@@ -39,6 +39,10 @@ export interface CallEndedData {
   transcript_entries?: Array<{ role: string; text: string; timestamp: string }>;
   recording_url?: string;
   qualification?: QualificationResult;
+  triggered_persona?: string;
+  triggered_situations?: string[];
+  triggered_product_sections?: string[];
+  social_proof_used?: boolean;
 }
 
 export interface QuestionPair {

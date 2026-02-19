@@ -25,6 +25,9 @@ import {
   Zap,
   Timer,
   Target,
+  Brain,
+  CheckCircle,
+  XCircle,
 } from "lucide-react";
 import type { CallRecord } from "@/types/call";
 import { CallStatusBadge } from "@/components/shared/status-badge";
@@ -67,7 +70,7 @@ function MetricCard({ label, value, unit, icon: Icon }: { label: string; value: 
   );
 }
 
-type Tab = "summary" | "transcript" | "qa" | "metrics" | "qualification";
+type Tab = "summary" | "transcript" | "qa" | "metrics" | "qualification" | "intelligence";
 
 export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("summary");
@@ -76,9 +79,16 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
   if (!call) return null;
 
   const data = call.endedData;
+  const hasIntelligence = data && (
+    data.triggered_persona ||
+    (data.triggered_situations && data.triggered_situations.length > 0) ||
+    (data.triggered_product_sections && data.triggered_product_sections.length > 0) ||
+    data.social_proof_used
+  );
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "summary", label: "Summary", icon: FileText },
     { id: "qualification", label: "Qualification", icon: Target },
+    ...(hasIntelligence ? [{ id: "intelligence" as Tab, label: "Intelligence", icon: Brain }] : []),
     { id: "transcript", label: "Transcript", icon: MessageSquare },
     { id: "qa", label: "Q&A", icon: BarChart3 },
     { id: "metrics", label: "Metrics", icon: Gauge },
@@ -398,6 +408,64 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                       <Target className="h-10 w-10 mx-auto mb-3 opacity-30" />
                       <p>No qualification data available.</p>
                       <p className="mt-1">Set GEMINI_API_KEY in .env.local to enable AI qualification.</p>
+                    </div>
+                  )}
+
+                  {activeTab === "intelligence" && hasIntelligence && (
+                    <div className="space-y-5">
+                      <h4 className="text-sm font-semibold mb-2">AI Intelligence Data</h4>
+
+                      {data.triggered_persona && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Detected Persona</h4>
+                          <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20">
+                            {data.triggered_persona}
+                          </Badge>
+                        </div>
+                      )}
+
+                      {data.triggered_situations && data.triggered_situations.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Triggered Situations</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {data.triggered_situations.map((s, i) => (
+                              <Badge key={i} variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">
+                                {s}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {data.triggered_product_sections && data.triggered_product_sections.length > 0 && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Active Product Sections</h4>
+                          <div className="flex flex-wrap gap-2">
+                            {data.triggered_product_sections.map((s, i) => (
+                              <Badge key={i} variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                                {s}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <h4 className="text-sm font-semibold mb-2">Social Proof</h4>
+                        <div className="flex items-center gap-2 text-sm">
+                          {data.social_proof_used ? (
+                            <>
+                              <CheckCircle className="h-4 w-4 text-emerald-400" />
+                              <span className="text-muted-foreground">Social proof was used during this call</span>
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="h-4 w-4 text-muted-foreground" />
+                              <span className="text-muted-foreground">Social proof was not used</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </motion.div>

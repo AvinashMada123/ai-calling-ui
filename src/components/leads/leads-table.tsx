@@ -1,8 +1,9 @@
 "use client";
 
+import { useState, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { MoreHorizontal, Phone, Trash2, Users } from "lucide-react";
+import { MoreHorizontal, Phone, Trash2, Users, StickyNote, Save, Loader2 } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -21,9 +22,12 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { LeadStatusBadge } from "@/components/shared/status-badge";
 import { QualificationBadge } from "@/components/shared/qualification-badge";
+import { Textarea } from "@/components/ui/textarea";
 import { EmptyState } from "@/components/shared/empty-state";
 import { useLeads } from "@/hooks/use-leads";
+import { useAuthContext } from "@/context/auth-context";
 import { formatPhoneNumber } from "@/lib/utils";
+import { toast } from "sonner";
 
 export function LeadsTable() {
   const {
@@ -33,7 +37,47 @@ export function LeadsTable() {
     selectAll,
     deselectAll,
     deleteLeads,
+    updateLead,
   } = useLeads();
+  const { user } = useAuthContext();
+  const [notesOpenId, setNotesOpenId] = useState<string | null>(null);
+  const [notesText, setNotesText] = useState("");
+  const [savingNotes, setSavingNotes] = useState(false);
+
+  const handleOpenNotes = useCallback((leadId: string, currentNotes: string) => {
+    if (notesOpenId === leadId) {
+      setNotesOpenId(null);
+      return;
+    }
+    setNotesOpenId(leadId);
+    setNotesText(currentNotes || "");
+  }, [notesOpenId]);
+
+  const handleSaveNotes = useCallback(async (leadId: string) => {
+    if (!user) return;
+    setSavingNotes(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/data/leads", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "update", id: leadId, updates: { botNotes: notesText } }),
+      });
+      if (res.ok) {
+        updateLead(leadId, { botNotes: notesText });
+        toast.success("Bot notes saved");
+      } else {
+        toast.error("Failed to save notes");
+      }
+    } catch {
+      toast.error("Failed to save notes");
+    } finally {
+      setSavingNotes(false);
+    }
+  }, [user, notesText, updateLead]);
 
   const allSelected =
     paginatedLeads.length > 0 &&
@@ -99,8 +143,8 @@ export function LeadsTable() {
         </TableHeader>
         <TableBody>
           {paginatedLeads.map((lead, index) => (
+            <Fragment key={lead.id}>
             <motion.tr
-              key={lead.id}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: index * 0.03 }}
@@ -174,6 +218,10 @@ export function LeadsTable() {
                         Call
                       </Link>
                     </DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => handleOpenNotes(lead.id, lead.botNotes || "")}>
+                      <StickyNote className="mr-2 h-4 w-4" />
+                      Bot Notes
+                    </DropdownMenuItem>
                     <DropdownMenuItem
                       variant="destructive"
                       onClick={() => deleteLeads([lead.id])}
@@ -185,6 +233,33 @@ export function LeadsTable() {
                 </DropdownMenu>
               </TableCell>
             </motion.tr>
+            {notesOpenId === lead.id && (
+              <tr className="border-b bg-muted/30">
+                <td colSpan={11} className="p-4">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium">Bot Notes for {lead.contactName}</span>
+                      <Button
+                        size="sm"
+                        onClick={() => handleSaveNotes(lead.id)}
+                        disabled={savingNotes}
+                      >
+                        {savingNotes ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                        Save
+                      </Button>
+                    </div>
+                    <Textarea
+                      value={notesText}
+                      onChange={(e) => setNotesText(e.target.value)}
+                      placeholder="Add notes about this lead for the bot to remember across calls..."
+                      rows={3}
+                      className="text-sm"
+                    />
+                  </div>
+                </td>
+              </tr>
+            )}
+            </Fragment>
           ))}
         </TableBody>
       </Table>

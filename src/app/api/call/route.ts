@@ -116,6 +116,18 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Fetch bot notes if memory recall is enabled and a leadId is provided
+    let botNotes = "";
+    if (configDoc?.memory_recall_enabled && payload.leadId) {
+      const leadRow = await queryOne<{ bot_notes: string }>(
+        "SELECT bot_notes FROM leads WHERE id = $1",
+        [payload.leadId]
+      );
+      if (leadRow?.bot_notes) {
+        botNotes = leadRow.bot_notes;
+      }
+    }
+
     // Build context
     const ctx = configDoc?.context_variables || configDoc?.contextVariables || {};
     const context = {
@@ -166,6 +178,9 @@ export async function POST(request: NextRequest) {
       ...personaPayload,
       ...productPayload,
       ...socialProofPayload,
+      preResearchEnabled: configDoc?.pre_research_enabled ?? false,
+      memoryRecallEnabled: configDoc?.memory_recall_enabled ?? false,
+      ...(botNotes ? { botNotes } : {}),
     };
 
     if (ghlWhatsappWebhookUrl) callServerPayload.ghlWhatsappWebhookUrl = ghlWhatsappWebhookUrl;

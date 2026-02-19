@@ -6,16 +6,13 @@ import { motion } from "framer-motion";
 import {
   ArrowLeft,
   Save,
-  Plus,
-  Trash2,
-  GripVertical,
   Loader2,
   Info,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import type { BotConfig, BotQuestion, BotObjection, BotContextVariables } from "@/types/bot-config";
+import type { BotConfig, BotContextVariables } from "@/types/bot-config";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -23,12 +20,13 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 
 import { PersonaTab } from "./persona-tab";
 import { ProductsTab } from "./products-tab";
 import { SocialProofTab } from "./social-proof-tab";
 
-type TabId = "prompt" | "context" | "questions" | "objections" | "persona" | "products" | "social-proof";
+type TabId = "prompt" | "context" | "persona" | "products" | "social-proof" | "options";
 
 async function apiBotConfigs(
   user: { getIdToken: () => Promise<string> },
@@ -64,24 +62,24 @@ export default function BotConfigEditorPage() {
   // Local editable state
   const [name, setName] = useState("");
   const [prompt, setPrompt] = useState("");
-  const [questions, setQuestions] = useState<BotQuestion[]>([]);
-  const [objections, setObjections] = useState<BotObjection[]>([]);
   const [contextVariables, setContextVariables] = useState<BotContextVariables>({});
   const [personaEngineEnabled, setPersonaEngineEnabled] = useState(false);
   const [productIntelligenceEnabled, setProductIntelligenceEnabled] = useState(false);
   const [socialProofEnabled, setSocialProofEnabled] = useState(false);
+  const [preResearchEnabled, setPreResearchEnabled] = useState(false);
+  const [memoryRecallEnabled, setMemoryRecallEnabled] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const populateConfig = useCallback((found: BotConfig) => {
     setConfig(found);
     setName(found.name);
     setPrompt(found.prompt);
-    setQuestions([...found.questions].sort((a, b) => a.order - b.order));
-    setObjections([...found.objections]);
     setContextVariables(found.contextVariables || {});
     setPersonaEngineEnabled(found.personaEngineEnabled || false);
     setProductIntelligenceEnabled(found.productIntelligenceEnabled || false);
     setSocialProofEnabled(found.socialProofEnabled || false);
+    setPreResearchEnabled(found.preResearchEnabled || false);
+    setMemoryRecallEnabled(found.memoryRecallEnabled || false);
     setLoading(false);
     hasLoadedRef.current = true;
   }, []);
@@ -151,25 +149,18 @@ export default function BotConfigEditorPage() {
     try {
       setSaving(true);
 
-      // Rebuild objectionKeywords from objections
-      const objectionKeywords: Record<string, string[]> = {};
-      for (const obj of objections) {
-        objectionKeywords[obj.key] = obj.keywords;
-      }
-
       await apiBotConfigs(user, "POST", {
         action: "update",
         configId,
         updates: {
           name,
           prompt,
-          questions,
-          objections,
-          objectionKeywords,
           contextVariables,
           personaEngineEnabled,
           productIntelligenceEnabled,
           socialProofEnabled,
+          preResearchEnabled,
+          memoryRecallEnabled,
         },
       });
       toast.success("Configuration saved successfully");
@@ -182,63 +173,13 @@ export default function BotConfigEditorPage() {
     }
   }
 
-  // Question helpers
-  function handleQuestionUpdate(index: number, field: keyof BotQuestion, value: string | number) {
-    setQuestions((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  }
-
-  function handleAddQuestion() {
-    const maxOrder = questions.length > 0 ? Math.max(...questions.map((q) => q.order)) + 1 : 0;
-    setQuestions((prev) => [
-      ...prev,
-      {
-        id: `q_${crypto.randomUUID().slice(0, 8)}`,
-        prompt: "",
-        order: maxOrder,
-      },
-    ]);
-  }
-
-  function handleDeleteQuestion(index: number) {
-    setQuestions((prev) => prev.filter((_, i) => i !== index));
-  }
-
-  // Objection helpers
-  function handleObjectionUpdate(index: number, field: keyof BotObjection, value: string | string[]) {
-    setObjections((prev) => {
-      const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: value };
-      return updated;
-    });
-  }
-
-  function handleAddObjection() {
-    setObjections((prev) => [
-      ...prev,
-      {
-        key: `obj_${crypto.randomUUID().slice(0, 8)}`,
-        response: "",
-        keywords: [],
-      },
-    ]);
-  }
-
-  function handleDeleteObjection(index: number) {
-    setObjections((prev) => prev.filter((_, i) => i !== index));
-  }
-
   const tabs: { id: TabId; label: string }[] = [
     { id: "prompt", label: "Prompt" },
-    { id: "context", label: "Context" },
-    { id: "questions", label: "Questions" },
-    { id: "objections", label: "Objections" },
+    { id: "context", label: "Variables" },
     { id: "persona", label: "Persona" },
     { id: "products", label: "Products" },
     { id: "social-proof", label: "Social Proof" },
+    { id: "options", label: "Additional Options" },
   ];
 
   if (loading) {
@@ -322,22 +263,6 @@ export default function BotConfigEditorPage() {
             onContextChange={setContextVariables}
           />
         )}
-        {activeTab === "questions" && (
-          <QuestionsTab
-            questions={questions}
-            onQuestionUpdate={handleQuestionUpdate}
-            onAddQuestion={handleAddQuestion}
-            onDeleteQuestion={handleDeleteQuestion}
-          />
-        )}
-        {activeTab === "objections" && (
-          <ObjectionsTab
-            objections={objections}
-            onObjectionUpdate={handleObjectionUpdate}
-            onAddObjection={handleAddObjection}
-            onDeleteObjection={handleDeleteObjection}
-          />
-        )}
         {activeTab === "persona" && user && (
           <PersonaTab
             orgId={orgId!}
@@ -360,6 +285,14 @@ export default function BotConfigEditorPage() {
             user={user}
             enabled={socialProofEnabled}
             onToggle={setSocialProofEnabled}
+          />
+        )}
+        {activeTab === "options" && (
+          <AdditionalOptionsTab
+            preResearchEnabled={preResearchEnabled}
+            onPreResearchToggle={setPreResearchEnabled}
+            memoryRecallEnabled={memoryRecallEnabled}
+            onMemoryRecallToggle={setMemoryRecallEnabled}
           />
         )}
       </motion.div>
@@ -467,161 +400,52 @@ function ContextTab({
   );
 }
 
-/* ========== Questions Tab ========== */
-function QuestionsTab({
-  questions,
-  onQuestionUpdate,
-  onAddQuestion,
-  onDeleteQuestion,
+/* ========== Additional Options Tab ========== */
+function AdditionalOptionsTab({
+  preResearchEnabled,
+  onPreResearchToggle,
+  memoryRecallEnabled,
+  onMemoryRecallToggle,
 }: {
-  questions: BotQuestion[];
-  onQuestionUpdate: (index: number, field: keyof BotQuestion, value: string | number) => void;
-  onAddQuestion: () => void;
-  onDeleteQuestion: (index: number) => void;
+  preResearchEnabled: boolean;
+  onPreResearchToggle: (v: boolean) => void;
+  memoryRecallEnabled: boolean;
+  onMemoryRecallToggle: (v: boolean) => void;
 }) {
   return (
-    <div className="space-y-4">
-      {questions.map((q, index) => (
-        <motion.div
-          key={q.id}
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: index * 0.02 }}
-        >
-          <Card>
-            <CardContent className="flex items-start gap-3 pt-0">
-              <div className="flex items-center gap-2 mt-1 shrink-0">
-                <GripVertical className="size-4 text-muted-foreground" />
-                <div className="w-14">
-                  <Label className="text-xs text-muted-foreground">Order</Label>
-                  <Input
-                    type="number"
-                    value={q.order}
-                    onChange={(e) => onQuestionUpdate(index, "order", parseInt(e.target.value) || 0)}
-                    className="h-8 text-center"
-                  />
-                </div>
-              </div>
-              <div className="flex-1 space-y-2">
-                <div>
-                  <Label className="text-xs text-muted-foreground">Question ID</Label>
-                  <Input
-                    value={q.id}
-                    onChange={(e) => onQuestionUpdate(index, "id", e.target.value)}
-                    className="h-8 font-mono text-xs"
-                    placeholder="unique_id"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs text-muted-foreground">Prompt Text</Label>
-                  <Textarea
-                    value={q.prompt}
-                    onChange={(e) => onQuestionUpdate(index, "prompt", e.target.value)}
-                    rows={2}
-                    className="text-sm"
-                    placeholder="Enter the question prompt..."
-                  />
-                </div>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-destructive hover:text-destructive mt-5"
-                onClick={() => onDeleteQuestion(index)}
-              >
-                <Trash2 className="size-4" />
-              </Button>
-            </CardContent>
-          </Card>
-        </motion.div>
-      ))}
-      <Button variant="outline" onClick={onAddQuestion} className="w-full">
-        <Plus className="size-4" />
-        Add Question
-      </Button>
-    </div>
-  );
-}
-
-/* ========== Objections Tab ========== */
-function ObjectionsTab({
-  objections,
-  onObjectionUpdate,
-  onAddObjection,
-  onDeleteObjection,
-}: {
-  objections: BotObjection[];
-  onObjectionUpdate: (index: number, field: keyof BotObjection, value: string | string[]) => void;
-  onAddObjection: () => void;
-  onDeleteObjection: (index: number) => void;
-}) {
-  return (
-    <div className="space-y-4">
-      {objections.map((obj, index) => (
-        <motion.div
-          key={obj.key + index}
-          initial={{ opacity: 0, x: -10 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ delay: index * 0.02 }}
-        >
-          <Card>
-            <CardContent className="space-y-3 pt-0">
-              <div className="flex items-start gap-3">
-                <div className="flex-1 space-y-3">
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Key</Label>
-                    <Input
-                      value={obj.key}
-                      onChange={(e) => onObjectionUpdate(index, "key", e.target.value)}
-                      className="h-8 font-mono text-xs"
-                      placeholder="objection_key"
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">Response</Label>
-                    <Textarea
-                      value={obj.response}
-                      onChange={(e) => onObjectionUpdate(index, "response", e.target.value)}
-                      rows={2}
-                      className="text-sm"
-                      placeholder="Bot response when this objection is detected..."
-                    />
-                  </div>
-                  <div>
-                    <Label className="text-xs text-muted-foreground">
-                      Keywords (comma-separated)
-                    </Label>
-                    <Input
-                      value={obj.keywords.join(", ")}
-                      onChange={(e) =>
-                        onObjectionUpdate(
-                          index,
-                          "keywords",
-                          e.target.value.split(",").map((k) => k.trim()).filter(Boolean)
-                        )
-                      }
-                      className="h-8 text-sm"
-                      placeholder="keyword1, keyword2, keyword3"
-                    />
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="text-destructive hover:text-destructive mt-5"
-                  onClick={() => onDeleteObjection(index)}
-                >
-                  <Trash2 className="size-4" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </motion.div>
-      ))}
-      <Button variant="outline" onClick={onAddObjection} className="w-full">
-        <Plus className="size-4" />
-        Add Objection
-      </Button>
-    </div>
+    <Card>
+      <CardHeader>
+        <CardTitle>Additional Options</CardTitle>
+        <p className="text-sm text-muted-foreground">
+          Enable or disable advanced bot capabilities for this configuration.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium">Pre-Research</Label>
+            <p className="text-sm text-muted-foreground">
+              Bot researches lead data (company, industry) before a call to personalize the conversation
+            </p>
+          </div>
+          <Switch
+            checked={preResearchEnabled}
+            onCheckedChange={onPreResearchToggle}
+          />
+        </div>
+        <div className="flex items-center justify-between rounded-lg border p-4">
+          <div className="space-y-0.5">
+            <Label className="text-sm font-medium">Memory Recall</Label>
+            <p className="text-sm text-muted-foreground">
+              Bot remembers past conversations with a lead across calls
+            </p>
+          </div>
+          <Switch
+            checked={memoryRecallEnabled}
+            onCheckedChange={onMemoryRecallToggle}
+          />
+        </div>
+      </CardContent>
+    </Card>
   );
 }

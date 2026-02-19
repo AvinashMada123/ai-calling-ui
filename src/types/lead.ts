@@ -18,6 +18,7 @@ export interface Lead {
   qualificationLevel?: QualificationLevel;
   qualificationConfidence?: number;
   lastQualifiedAt?: string;
+  botNotes?: string;
 }
 
 export type LeadStatus =

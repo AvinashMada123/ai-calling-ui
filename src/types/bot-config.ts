@@ -37,6 +37,8 @@ export interface BotConfig {
   personaEngineEnabled?: boolean;
   productIntelligenceEnabled?: boolean;
   socialProofEnabled?: boolean;
+  preResearchEnabled?: boolean;
+  memoryRecallEnabled?: boolean;
   createdAt: string;
   updatedAt: string;
   createdBy: string;

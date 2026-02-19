@@ -94,6 +94,7 @@ export async function POST(request: NextRequest) {
         qualificationLevel: "qualification_level",
         qualificationConfidence: "qualification_confidence",
         lastQualifiedAt: "last_qualified_at",
+        botNotes: "bot_notes",
       };
 
       for (const [key, value] of Object.entries(data.updates || {})) {
