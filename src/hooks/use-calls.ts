@@ -7,7 +7,7 @@ import { generateId } from "@/lib/utils";
 import type { CallRequest, CallRecord, CallStatus, CallResponse, CallEndedData } from "@/types/call";
 import { toast } from "sonner";
 
-const POLL_INTERVAL_MS = 3000;
+const POLL_INTERVAL_MS = 5000;
 
 export function useCalls() {
   const { state, dispatch } = useCallsContext();

@@ -57,101 +57,109 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Source 3: Poll FWAI backend directly for any still-unresolved UUIDs
+  // Source 3: Poll FWAI backend ONLY for calls that have been active > 2 minutes
+  // (rare fallback in case the call-ended webhook fails)
   const stillUnresolved = callUuids.filter((u) => !resolvedUuids.has(u));
-  if (stillUnresolved.length > 0) {
-    await Promise.all(
-      stillUnresolved.map(async (uuid) => {
-        const url = `${FWAI_BACKEND_URL}/calls/${uuid}/status`;
-        try {
-          const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-          if (res.status === 404) {
-            // Session no longer exists — call already ended & cleaned up.
-            // Return a minimal "completed" update so frontend stops polling.
-            pendingUpdates.push({
-              callUuid: uuid,
-              data: {
-                call_uuid: uuid,
-                caller_phone: "",
-                contact_name: "",
-                client_name: "",
-                duration_seconds: 0,
-                timestamp: new Date().toISOString(),
-                questions_completed: 0,
-                total_questions: 0,
-                completion_rate: 0,
-                interest_level: "Unknown",
-                call_summary: "Call ended (no detailed data available)",
-                objections_raised: [],
-                collected_responses: {},
-                question_pairs: [],
-                call_metrics: {
-                  questions_completed: 0,
-                  total_duration_s: 0,
-                  avg_latency_ms: 0,
-                  p90_latency_ms: 0,
-                  min_latency_ms: 0,
-                  max_latency_ms: 0,
-                  total_nudges: 0,
-                },
-                transcript: "",
-              } as CallEndedData,
-              receivedAt: new Date().toISOString(),
-            });
-            return;
-          }
-          if (!res.ok) {
-            errors.push(`${uuid}: HTTP ${res.status}`);
-            return;
-          }
-          const call = await res.json();
-          if (call.status !== "completed") {
-            errors.push(`${uuid}: status=${call.status}`);
-            return;
-          }
+  if (stillUnresolved.length > 0 && orgId) {
+    try {
+      // Check how long these calls have been active
+      const batch = stillUnresolved.slice(0, 30);
+      const placeholders = batch.map((_, i) => `$${i + 2}`).join(", ");
+      const staleRows = await query(
+        `SELECT call_uuid FROM ui_calls WHERE org_id = $1 AND call_uuid IN (${placeholders}) AND initiated_at < NOW() - INTERVAL '2 minutes' AND ended_data IS NULL`,
+        [orgId, ...batch]
+      );
+      const staleUuids = new Set(staleRows.map((r) => r.call_uuid as string));
 
-          const qc = call.questions_completed || 0;
-          const tq = call.total_questions || Math.max(qc, 1);
-          const cr = tq > 0 ? qc / tq : 0;
+      if (staleUuids.size > 0) {
+        await Promise.all(
+          [...staleUuids].map(async (uuid) => {
+            const url = `${FWAI_BACKEND_URL}/calls/${uuid}/status`;
+            try {
+              const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+              if (res.status === 404) {
+                // Session gone — return minimal completed update so frontend stops polling
+                pendingUpdates.push({
+                  callUuid: uuid,
+                  data: {
+                    call_uuid: uuid,
+                    caller_phone: "",
+                    contact_name: "",
+                    client_name: "",
+                    duration_seconds: 0,
+                    timestamp: new Date().toISOString(),
+                    questions_completed: 0,
+                    total_questions: 0,
+                    completion_rate: 0,
+                    interest_level: "Unknown",
+                    call_summary: "Call ended (no detailed data available)",
+                    objections_raised: [],
+                    collected_responses: {},
+                    question_pairs: [],
+                    call_metrics: {
+                      questions_completed: 0,
+                      total_duration_s: 0,
+                      avg_latency_ms: 0,
+                      p90_latency_ms: 0,
+                      min_latency_ms: 0,
+                      max_latency_ms: 0,
+                      total_nudges: 0,
+                    },
+                    transcript: "",
+                    no_answer: true,
+                  } as CallEndedData,
+                  receivedAt: new Date().toISOString(),
+                });
+                return;
+              }
+              if (!res.ok) return;
+              const call = await res.json();
+              if (call.status !== "completed") return;
 
-          const data: CallEndedData = {
-            call_uuid: call.call_uuid,
-            caller_phone: call.phone || "",
-            contact_name: call.contact_name || "",
-            client_name: call.client_name || "",
-            duration_seconds: call.duration_seconds || 0,
-            timestamp: call.ended_at || new Date().toISOString(),
-            questions_completed: qc,
-            total_questions: tq,
-            completion_rate: cr,
-            interest_level: call.interest_level || (cr > 0.7 ? "High" : cr > 0.4 ? "Medium" : "Low"),
-            call_summary: call.call_summary || "",
-            objections_raised: call.objections_raised || [],
-            collected_responses: call.collected_responses || {},
-            question_pairs: call.question_pairs || [],
-            call_metrics: call.call_metrics || {
-              questions_completed: qc,
-              total_duration_s: call.duration_seconds || 0,
-              avg_latency_ms: 0,
-              p90_latency_ms: 0,
-              min_latency_ms: 0,
-              max_latency_ms: 0,
-              total_nudges: 0,
-            },
-            transcript: call.transcript || "",
-            recording_url: `/api/calls/${call.call_uuid}/recording`,
-          };
+              const qc = call.questions_completed || 0;
+              const tq = call.total_questions || Math.max(qc, 1);
+              const cr = tq > 0 ? qc / tq : 0;
 
-          pendingUpdates.push({
-            callUuid: uuid,
-            data,
-            receivedAt: new Date().toISOString(),
-          });
-        } catch (e) {
-          errors.push(`${uuid}: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      })
-    );
+              pendingUpdates.push({
+                callUuid: uuid,
+                data: {
+                  call_uuid: call.call_uuid,
+                  caller_phone: call.phone || "",
+                  contact_name: call.contact_name || "",
+                  client_name: call.client_name || "",
+                  duration_seconds: call.duration_seconds || 0,
+                  timestamp: call.ended_at || new Date().toISOString(),
+                  questions_completed: qc,
+                  total_questions: tq,
+                  completion_rate: cr,
+                  interest_level: call.interest_level || (cr > 0.7 ? "High" : cr > 0.4 ? "Medium" : "Low"),
+                  call_summary: call.call_summary || "",
+                  objections_raised: call.objections_raised || [],
+                  collected_responses: call.collected_responses || {},
+                  question_pairs: call.question_pairs || [],
+                  call_metrics: call.call_metrics || {
+                    questions_completed: qc,
+                    total_duration_s: call.duration_seconds || 0,
+                    avg_latency_ms: 0,
+                    p90_latency_ms: 0,
+                    min_latency_ms: 0,
+                    max_latency_ms: 0,
+                    total_nudges: 0,
+                  },
+                  transcript: call.transcript || "",
+                  recording_url: `/api/calls/${call.call_uuid}/recording`,
+                } as CallEndedData,
+                receivedAt: new Date().toISOString(),
+              });
+            } catch (e) {
+              errors.push(`${uuid}: ${e instanceof Error ? e.message : String(e)}`);
+            }
+          })
+        );
+      }
+    } catch (e) {
+      errors.push(`stale check: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
 
   return NextResponse.json({
