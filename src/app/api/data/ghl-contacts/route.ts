@@ -1,22 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { requireUidAndOrg, query, queryOne } from "@/lib/db";
 
 export const maxDuration = 60;
 
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 const GHL_PAGE_LIMIT = 100;
-
-async function getUidAndOrg(request: NextRequest) {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) throw new Error("Unauthorized");
-  const idToken = authHeader.slice(7);
-  const decoded = await getAdminAuth().verifyIdToken(idToken);
-  const userDoc = await getAdminDb().collection("users").doc(decoded.uid).get();
-  if (!userDoc.exists) throw new Error("User not found");
-  const orgId = userDoc.data()!.orgId;
-  return { uid: decoded.uid, orgId };
-}
 
 interface GHLContact {
   id: string;
@@ -34,97 +23,69 @@ interface GHLResponse {
   meta: { startAfterId?: string; total?: number };
 }
 
-async function fetchGHLTags(
-  apiKey: string,
-  locationId: string
-): Promise<string[]> {
+async function fetchGHLTags(apiKey: string, locationId: string): Promise<string[]> {
   console.log("[GHL Tags] Fetching tags for location:", locationId);
-  const res = await fetch(
-    `${GHL_API_BASE}/locations/${locationId}/tags`,
-    {
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        Version: GHL_API_VERSION,
-      },
-    }
-  );
-
+  const res = await fetch(`${GHL_API_BASE}/locations/${locationId}/tags`, {
+    headers: { Authorization: `Bearer ${apiKey}`, Version: GHL_API_VERSION },
+  });
   if (!res.ok) {
     const errorText = await res.text();
     console.error(`[GHL Tags] API error: ${res.status} - ${errorText}`);
     throw new Error(`GHL Tags API error ${res.status}: ${errorText}`);
   }
-
   const data = await res.json();
-  const tags: string[] = (data.tags ?? []).map(
-    (t: { name?: string } | string) => (typeof t === "string" ? t : t.name ?? "")
-  ).filter(Boolean);
+  const tags: string[] = (data.tags ?? [])
+    .map((t: { name?: string } | string) => (typeof t === "string" ? t : t.name ?? ""))
+    .filter(Boolean);
   console.log(`[GHL Tags] Found ${tags.length} tags`);
   return tags;
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { orgId } = await getUidAndOrg(request);
-    const db = getAdminDb();
+    const { orgId } = await requireUidAndOrg(request);
     const body = await request.json();
 
     // Read GHL credentials from org settings
-    const orgDoc = await db.collection("organizations").doc(orgId).get();
-    if (!orgDoc.exists) {
-      return NextResponse.json(
-        { success: false, message: "Organization not found" },
-        { status: 404 }
-      );
+    const orgRow = await queryOne<{ settings: Record<string, string> }>(
+      "SELECT settings FROM organizations WHERE id = $1",
+      [orgId]
+    );
+    if (!orgRow) {
+      return NextResponse.json({ success: false, message: "Organization not found" }, { status: 404 });
     }
 
-    const settings = orgDoc.data()?.settings ?? {};
+    const settings = orgRow.settings || {};
     const ghlApiKey = settings.ghlApiKey;
     const ghlLocationId = settings.ghlLocationId;
 
     if (!ghlApiKey || !ghlLocationId) {
       return NextResponse.json(
-        {
-          success: false,
-          message: "GHL API Key and Location ID must be configured in Settings",
-        },
+        { success: false, message: "GHL API Key and Location ID must be configured in Settings" },
         { status: 400 }
       );
     }
 
-    // Fetch available tags from GHL
     if (body.action === "fetchTags") {
       const tags = await fetchGHLTags(ghlApiKey, ghlLocationId);
       return NextResponse.json({ success: true, tags });
     }
 
     if (body.action !== "sync") {
-      return NextResponse.json(
-        { success: false, message: "Unknown action" },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, message: "Unknown action" }, { status: 400 });
     }
 
-    // Sync: fetch ONE page of 100 contacts, save, return cursor for next batch
+    // Sync: fetch ONE page of 100 contacts
     const filterTag: string | undefined = body.tag || undefined;
     const cursor: string | undefined = body.cursor || undefined;
 
     console.log(`[GHL Sync] Fetching batch for org: ${orgId}${filterTag ? ` (tag: "${filterTag}")` : ""}${cursor ? ` (cursor: ${cursor})` : " (first batch)"}`);
 
-    // Fetch one page from GHL
-    const params = new URLSearchParams({
-      locationId: ghlLocationId,
-      limit: String(GHL_PAGE_LIMIT),
-    });
-    if (cursor) {
-      params.set("startAfterId", cursor);
-    }
+    const params = new URLSearchParams({ locationId: ghlLocationId, limit: String(GHL_PAGE_LIMIT) });
+    if (cursor) params.set("startAfterId", cursor);
 
     const ghlRes = await fetch(`${GHL_API_BASE}/contacts/?${params.toString()}`, {
-      headers: {
-        Authorization: `Bearer ${ghlApiKey}`,
-        Version: GHL_API_VERSION,
-      },
+      headers: { Authorization: `Bearer ${ghlApiKey}`, Version: GHL_API_VERSION },
     });
 
     if (!ghlRes.ok) {
@@ -136,7 +97,6 @@ export async function POST(request: NextRequest) {
     const ghlData: GHLResponse = await ghlRes.json();
     const totalInGHL = ghlData.meta?.total ?? 0;
 
-    // Filter by tag if specified
     const contacts = filterTag
       ? ghlData.contacts.filter((c) => c.tags?.includes(filterTag))
       : ghlData.contacts;
@@ -144,104 +104,72 @@ export async function POST(request: NextRequest) {
     console.log(`[GHL Sync] Got ${ghlData.contacts.length} contacts from GHL, ${contacts.length} matched${filterTag ? ` tag "${filterTag}"` : ""} (total in GHL: ${totalInGHL})`);
 
     // Load existing GHL leads for upsert
-    const leadsRef = db.collection("organizations").doc(orgId).collection("leads");
-    const existingByGhlId = new Map<string, string>();
-
-    if (contacts.length > 0) {
-      const ghlIds = contacts.map((c) => c.id);
-      // Query in chunks of 30 (Firestore 'in' limit)
-      for (let i = 0; i < ghlIds.length; i += 30) {
-        const chunk = ghlIds.slice(i, i + 30);
-        const snap = await leadsRef.where("ghlContactId", "in", chunk).get();
-        for (const doc of snap.docs) {
-          const data = doc.data();
-          if (data.ghlContactId) {
-            existingByGhlId.set(data.ghlContactId, doc.id);
-          }
-        }
-      }
-    }
-
-    // Upsert contacts
-    const now = new Date().toISOString();
     let synced = 0;
+    const now = new Date().toISOString();
 
     if (contacts.length > 0) {
-      const batch = db.batch();
+      // Get existing leads with these GHL IDs
+      const ghlIds = contacts.map((c) => c.id);
+      const placeholders = ghlIds.map((_, i) => `$${i + 2}`).join(", ");
+      const existingRows = await query<{ id: string; ghl_contact_id: string }>(
+        `SELECT id, ghl_contact_id FROM leads WHERE org_id = $1 AND ghl_contact_id IN (${placeholders})`,
+        [orgId, ...ghlIds]
+      );
+      const existingByGhlId = new Map<string, string>();
+      for (const row of existingRows) {
+        existingByGhlId.set(row.ghl_contact_id, row.id);
+      }
+
       for (const contact of contacts) {
         const existingDocId = existingByGhlId.get(contact.id);
-        const contactName =
-          [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Unknown";
+        const contactName = [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Unknown";
 
         if (existingDocId) {
-          batch.update(leadsRef.doc(existingDocId), {
-            contactName,
-            phoneNumber: contact.phone || "",
-            email: contact.email || undefined,
-            company: contact.companyName || undefined,
-            location: contact.city || undefined,
-            tags: contact.tags || [],
-            updatedAt: now,
-          });
+          await query(
+            `UPDATE leads SET contact_name = $1, phone_number = $2, email = $3, company = $4, location = $5, tags = $6, updated_at = $7
+             WHERE id = $8 AND org_id = $9`,
+            [contactName, contact.phone || "", contact.email || null, contact.companyName || null, contact.city || null, JSON.stringify(contact.tags || []), now, existingDocId, orgId]
+          );
         } else {
-          const ref = leadsRef.doc();
-          batch.set(ref, {
-            id: ref.id,
-            contactName,
-            phoneNumber: contact.phone || "",
-            email: contact.email || undefined,
-            company: contact.companyName || undefined,
-            location: contact.city || undefined,
-            tags: contact.tags || [],
-            status: "new",
-            callCount: 0,
-            source: "ghl",
-            ghlContactId: contact.id,
-            createdAt: now,
-            updatedAt: now,
-          });
+          const id = crypto.randomUUID();
+          await query(
+            `INSERT INTO leads (id, org_id, contact_name, phone_number, email, company, location, tags, status, call_count, source, ghl_contact_id, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'new', 0, 'ghl', $9, $10, $10)`,
+            [id, orgId, contactName, contact.phone || "", contact.email || null, contact.companyName || null, contact.city || null, JSON.stringify(contact.tags || []), contact.id, now]
+          );
         }
         synced++;
       }
-      await batch.commit();
-      console.log(`[GHL Sync] Saved ${synced} leads to Firestore`);
+      console.log(`[GHL Sync] Saved ${synced} leads to PostgreSQL`);
     }
 
     // Update last sync time
-    await db.collection("organizations").doc(orgId).update({
-      "settings.ghlLastSyncAt": now,
-      updatedAt: now,
-    });
+    await query(
+      `UPDATE organizations SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{ghlLastSyncAt}', to_jsonb($1::text)), updated_at = $1 WHERE id = $2`,
+      [now, orgId]
+    );
 
-    // Determine if there are more pages
     const hasMore = !!(ghlData.meta?.startAfterId && ghlData.contacts.length >= GHL_PAGE_LIMIT);
     const nextCursor = hasMore ? ghlData.meta!.startAfterId : null;
 
     console.log(`[GHL Sync] Batch done. Synced: ${synced}, hasMore: ${hasMore}`);
 
-    return NextResponse.json({
-      success: true,
-      synced,
-      totalInGHL,
-      hasMore,
-      nextCursor,
-      ghlLastSyncAt: now,
-    });
+    return NextResponse.json({ success: true, synced, totalInGHL, hasMore, nextCursor, ghlLastSyncAt: now });
   } catch (error) {
     console.error("[GHL Contacts API] POST error:", error);
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
+    const message = error instanceof Error ? error.message : "Internal server error";
     return NextResponse.json({ success: false, message }, { status: 500 });
   }
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const { orgId } = await getUidAndOrg(request);
-    const db = getAdminDb();
-
-    const orgDoc = await db.collection("organizations").doc(orgId).get();
-    const settings = orgDoc.data()?.settings ?? {};
+    const { orgId } = await requireUidAndOrg(request);
+    const orgRow = await queryOne<{ settings: Record<string, string> }>(
+      "SELECT settings FROM organizations WHERE id = $1",
+      [orgId]
+    );
+    const settings = orgRow?.settings ?? {};
 
     return NextResponse.json({
       ghlSyncEnabled: settings.ghlSyncEnabled ?? false,

@@ -1,36 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-
-async function getOrgId(request: NextRequest): Promise<{ orgId: string; uid: string } | NextResponse> {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const idToken = authHeader.slice(7);
-  const decoded = await getAdminAuth().verifyIdToken(idToken);
-  const db = getAdminDb();
-  const userDoc = await db.collection("users").doc(decoded.uid).get();
-  if (!userDoc.exists) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
-  }
-  return { orgId: userDoc.data()!.orgId as string, uid: decoded.uid };
-}
+import { getUidAndOrgFromToken, query, toCamelRows } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId } = result;
 
-    const db = getAdminDb();
-    const snap = await db
-      .collection("organizations")
-      .doc(orgId)
-      .collection("botConfigs")
-      .get();
-
-    const configs = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    return NextResponse.json({ configs });
+    const rows = await query("SELECT * FROM bot_configs WHERE org_id = $1", [orgId]);
+    return NextResponse.json({ configs: toCamelRows(rows) });
   } catch (error) {
     console.error("[Bot Configs API] GET error:", error);
     return NextResponse.json({ error: "Failed to load" }, { status: 500 });
@@ -39,46 +17,95 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId } = result;
 
     const body = await request.json();
     const { action } = body;
-    const db = getAdminDb();
-    const configsCol = db.collection("organizations").doc(orgId).collection("botConfigs");
 
     switch (action) {
       case "create": {
         const { config } = body;
-        await configsCol.doc(config.id).set(config);
+        await query(
+          `INSERT INTO bot_configs (id, org_id, name, is_active, prompt, questions, objections, objection_keywords, context_variables, qualification_criteria, persona_engine_enabled, product_intelligence_enabled, social_proof_enabled, created_by, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $15)`,
+          [
+            config.id,
+            orgId,
+            config.name || "",
+            config.isActive ?? false,
+            config.prompt || "",
+            JSON.stringify(config.questions || []),
+            JSON.stringify(config.objections || []),
+            JSON.stringify(config.objectionKeywords || {}),
+            JSON.stringify(config.contextVariables || {}),
+            JSON.stringify(config.qualificationCriteria || {}),
+            config.personaEngineEnabled ?? false,
+            config.productIntelligenceEnabled ?? false,
+            config.socialProofEnabled ?? false,
+            config.createdBy || null,
+            config.createdAt || new Date().toISOString(),
+          ]
+        );
         return NextResponse.json({ success: true });
       }
 
       case "update": {
         const { configId, updates } = body;
-        await configsCol.doc(configId).update({
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        });
+        const sets: string[] = [];
+        const vals: unknown[] = [];
+        let idx = 1;
+
+        const fieldMap: Record<string, string> = {
+          name: "name",
+          isActive: "is_active",
+          prompt: "prompt",
+          questions: "questions",
+          objections: "objections",
+          objectionKeywords: "objection_keywords",
+          contextVariables: "context_variables",
+          qualificationCriteria: "qualification_criteria",
+          personaEngineEnabled: "persona_engine_enabled",
+          productIntelligenceEnabled: "product_intelligence_enabled",
+          socialProofEnabled: "social_proof_enabled",
+        };
+
+        const jsonCols = new Set([
+          "questions", "objections", "objection_keywords",
+          "context_variables", "qualification_criteria",
+        ]);
+
+        for (const [key, value] of Object.entries(updates || {})) {
+          const col = fieldMap[key];
+          if (col) {
+            sets.push(`${col} = $${idx++}`);
+            vals.push(jsonCols.has(col) ? JSON.stringify(value) : value);
+          }
+        }
+        sets.push(`updated_at = $${idx++}`);
+        vals.push(new Date().toISOString());
+        vals.push(configId);
+        vals.push(orgId);
+
+        await query(
+          `UPDATE bot_configs SET ${sets.join(", ")} WHERE id = $${idx} AND org_id = $${idx + 1}`,
+          vals
+        );
         return NextResponse.json({ success: true });
       }
 
       case "delete": {
         const { configId } = body;
-        await configsCol.doc(configId).delete();
+        await query("DELETE FROM bot_configs WHERE id = $1 AND org_id = $2", [configId, orgId]);
         return NextResponse.json({ success: true });
       }
 
       case "setActive": {
         const { configId } = body;
-        // Get all configs and batch update
-        const snap = await configsCol.get();
-        const batch = db.batch();
-        for (const doc of snap.docs) {
-          batch.update(doc.ref, { isActive: doc.id === configId });
-        }
-        await batch.commit();
+        // Deactivate all, then activate the chosen one
+        await query("UPDATE bot_configs SET is_active = false WHERE org_id = $1", [orgId]);
+        await query("UPDATE bot_configs SET is_active = true WHERE id = $1 AND org_id = $2", [configId, orgId]);
         return NextResponse.json({ success: true });
       }
 

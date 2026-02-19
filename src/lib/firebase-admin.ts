@@ -1,10 +1,8 @@
 import { initializeApp, getApps, cert, type ServiceAccount, type App } from "firebase-admin/app";
 import { getAuth, type Auth } from "firebase-admin/auth";
-import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
 let _app: App | null = null;
 let _auth: Auth | null = null;
-let _db: Firestore | null = null;
 
 function ensureApp(): App {
   if (_app) return _app;
@@ -29,11 +27,6 @@ export function getAdminAuth(): Auth {
   return _auth;
 }
 
-export function getAdminDb(): Firestore {
-  if (!_db) _db = getFirestore(ensureApp());
-  return _db;
-}
-
 // Backward-compatible exports using getter properties
 export const adminAuth = {
   get instance() {
@@ -44,11 +37,5 @@ export const adminAuth = {
   },
   verifySessionCookie(...args: Parameters<Auth["verifySessionCookie"]>) {
     return getAdminAuth().verifySessionCookie(...args);
-  },
-};
-
-export const adminDb = {
-  collection(...args: Parameters<Firestore["collection"]>) {
-    return getAdminDb().collection(...args);
   },
 };

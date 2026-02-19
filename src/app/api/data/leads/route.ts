@@ -1,24 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-
-async function getUidAndOrg(request: NextRequest) {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) throw new Error("Unauthorized");
-  const idToken = authHeader.slice(7);
-  const decoded = await getAdminAuth().verifyIdToken(idToken);
-  const userDoc = await getAdminDb().collection("users").doc(decoded.uid).get();
-  if (!userDoc.exists) throw new Error("User not found");
-  const orgId = userDoc.data()!.orgId;
-  return { uid: decoded.uid, orgId };
-}
+import { requireUidAndOrg, query, toCamelRows } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
-    const { orgId } = await getUidAndOrg(request);
-    const db = getAdminDb();
-    const snap = await db.collection("organizations").doc(orgId).collection("leads").orderBy("createdAt", "desc").get();
-    const leads = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    return NextResponse.json({ leads });
+    const { orgId } = await requireUidAndOrg(request);
+    const rows = await query(
+      "SELECT * FROM leads WHERE org_id = $1 ORDER BY created_at DESC",
+      [orgId]
+    );
+    return NextResponse.json({ leads: toCamelRows(rows) });
   } catch (error) {
     console.error("[Leads API] GET error:", error);
     return NextResponse.json({ leads: [] }, { status: 500 });
@@ -27,66 +17,115 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { uid, orgId } = await getUidAndOrg(request);
-    const db = getAdminDb();
+    const { uid, orgId } = await requireUidAndOrg(request);
     const body = await request.json();
     const { action, ...data } = body;
 
     if (action === "add") {
-      const ref = db.collection("organizations").doc(orgId).collection("leads").doc();
-      const lead = {
-        ...data.lead,
-        id: ref.id,
-        createdBy: uid,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
-      await ref.set(lead);
+      const id = crypto.randomUUID();
+      const now = new Date().toISOString();
+      const lead = { ...data.lead, id, createdBy: uid, createdAt: now, updatedAt: now };
+      await query(
+        `INSERT INTO leads (id, org_id, phone_number, contact_name, email, company, location, tags, status, call_count, source, ghl_contact_id, created_by, created_at, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)`,
+        [
+          id, orgId,
+          data.lead.phoneNumber || "",
+          data.lead.contactName || "",
+          data.lead.email || null,
+          data.lead.company || null,
+          data.lead.location || null,
+          JSON.stringify(data.lead.tags || []),
+          data.lead.status || "new",
+          data.lead.callCount || 0,
+          data.lead.source || "manual",
+          data.lead.ghlContactId || null,
+          uid,
+          now,
+        ]
+      );
       return NextResponse.json({ success: true, lead });
     }
 
     if (action === "addBulk") {
-      const batch = db.batch();
+      const now = new Date().toISOString();
       const leads: Record<string, unknown>[] = [];
       for (const item of data.leads) {
-        const ref = db.collection("organizations").doc(orgId).collection("leads").doc();
-        const lead = {
-          ...item,
-          id: ref.id,
-          createdBy: uid,
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        batch.set(ref, lead);
-        leads.push(lead);
+        const id = crypto.randomUUID();
+        await query(
+          `INSERT INTO leads (id, org_id, phone_number, contact_name, email, company, location, tags, status, call_count, source, ghl_contact_id, created_by, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $14)`,
+          [
+            id, orgId,
+            item.phoneNumber || "",
+            item.contactName || "",
+            item.email || null,
+            item.company || null,
+            item.location || null,
+            JSON.stringify(item.tags || []),
+            item.status || "new",
+            item.callCount || 0,
+            item.source || "manual",
+            item.ghlContactId || null,
+            uid,
+            now,
+          ]
+        );
+        leads.push({ ...item, id, createdBy: uid, createdAt: now, updatedAt: now });
       }
-      await batch.commit();
       return NextResponse.json({ success: true, leads });
     }
 
     if (action === "update") {
-      const ref = db.collection("organizations").doc(orgId).collection("leads").doc(data.id);
-      await ref.update({ ...data.updates, updatedAt: new Date().toISOString() });
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      let idx = 1;
+
+      const fieldMap: Record<string, string> = {
+        contactName: "contact_name",
+        phoneNumber: "phone_number",
+        email: "email",
+        company: "company",
+        location: "location",
+        tags: "tags",
+        status: "status",
+        callCount: "call_count",
+        lastCallDate: "last_call_date",
+        qualificationLevel: "qualification_level",
+        qualificationConfidence: "qualification_confidence",
+        lastQualifiedAt: "last_qualified_at",
+      };
+
+      for (const [key, value] of Object.entries(data.updates || {})) {
+        const col = fieldMap[key];
+        if (col) {
+          sets.push(`${col} = $${idx++}`);
+          vals.push(col === "tags" ? JSON.stringify(value) : value);
+        }
+      }
+      sets.push(`updated_at = $${idx++}`);
+      vals.push(new Date().toISOString());
+      vals.push(data.id);
+
+      await query(
+        `UPDATE leads SET ${sets.join(", ")} WHERE id = $${idx} AND org_id = $${idx + 1}`,
+        [...vals, orgId]
+      );
       return NextResponse.json({ success: true });
     }
 
     if (action === "delete") {
-      const batch = db.batch();
       for (const id of data.ids) {
-        batch.delete(db.collection("organizations").doc(orgId).collection("leads").doc(id));
+        await query("DELETE FROM leads WHERE id = $1 AND org_id = $2", [id, orgId]);
       }
-      await batch.commit();
       return NextResponse.json({ success: true });
     }
 
     if (action === "incrementCallCount") {
-      const { FieldValue } = await import("firebase-admin/firestore");
-      const ref = db.collection("organizations").doc(orgId).collection("leads").doc(data.id);
-      await ref.update({
-        callCount: FieldValue.increment(1),
-        lastCallDate: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      });
+      await query(
+        `UPDATE leads SET call_count = call_count + 1, last_call_date = $1, updated_at = $1 WHERE id = $2 AND org_id = $3`,
+        [new Date().toISOString(), data.id, orgId]
+      );
       return NextResponse.json({ success: true });
     }
 

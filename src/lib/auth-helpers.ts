@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { adminAuth } from "@/lib/firebase-admin";
-import { adminDb } from "@/lib/firebase-admin";
+import { queryOne } from "@/lib/db";
 import type { UserRole } from "@/types/user";
 
 const SESSION_COOKIE_NAME = "__session";
@@ -20,15 +20,17 @@ export async function getAuthenticatedUser(
     if (!sessionCookie) return null;
 
     const decoded = await adminAuth.verifySessionCookie(sessionCookie, true);
-    const userDoc = await adminDb.collection("users").doc(decoded.uid).get();
-    if (!userDoc.exists) return null;
+    const row = await queryOne<{ email: string; org_id: string; role: string }>(
+      "SELECT email, org_id, role FROM users WHERE uid = $1",
+      [decoded.uid]
+    );
+    if (!row) return null;
 
-    const data = userDoc.data()!;
     return {
       uid: decoded.uid,
-      email: data.email,
-      orgId: data.orgId,
-      role: data.role,
+      email: row.email,
+      orgId: row.org_id,
+      role: row.role as UserRole,
     };
   } catch {
     return null;

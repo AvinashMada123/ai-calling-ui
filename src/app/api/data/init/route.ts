@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { getAdminAuth } from "@/lib/firebase-admin";
+import { query, queryOne, toCamel, toCamelRows } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,30 +10,44 @@ export async function GET(request: NextRequest) {
     }
     const idToken = authHeader.slice(7);
     const decoded = await getAdminAuth().verifyIdToken(idToken);
-    const db = getAdminDb();
 
     // Get user profile
-    const userDoc = await db.collection("users").doc(decoded.uid).get();
-    if (!userDoc.exists) {
+    const userRow = await queryOne(
+      "SELECT uid, email, display_name, role, org_id, status, created_at, last_login_at, invited_by FROM users WHERE uid = $1",
+      [decoded.uid]
+    );
+    if (!userRow) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
-    const profile = { uid: decoded.uid, ...userDoc.data() };
-    const orgId = userDoc.data()!.orgId as string;
+    const profile = toCamel(userRow);
+    const orgId = userRow.org_id as string;
 
     // Fetch org settings, leads, calls, bot configs, and team in parallel
-    const [orgDoc, leadsSnap, callsSnap, botConfigsSnap, teamSnap] = await Promise.all([
-      db.collection("organizations").doc(orgId).get(),
-      db.collection("organizations").doc(orgId).collection("leads").orderBy("createdAt", "desc").get(),
-      db.collection("organizations").doc(orgId).collection("calls").orderBy("initiatedAt", "desc").get(),
-      db.collection("organizations").doc(orgId).collection("botConfigs").get(),
-      db.collection("users").where("orgId", "==", orgId).get(),
+    const [orgRow, leadsRows, callsRows, botConfigsRows, teamRows] = await Promise.all([
+      queryOne("SELECT settings FROM organizations WHERE id = $1", [orgId]),
+      query(
+        "SELECT * FROM leads WHERE org_id = $1 ORDER BY created_at DESC",
+        [orgId]
+      ),
+      query(
+        "SELECT * FROM ui_calls WHERE org_id = $1 ORDER BY initiated_at DESC",
+        [orgId]
+      ),
+      query(
+        "SELECT * FROM bot_configs WHERE org_id = $1",
+        [orgId]
+      ),
+      query(
+        "SELECT uid, email, display_name, role, org_id, status, created_at, last_login_at FROM users WHERE org_id = $1",
+        [orgId]
+      ),
     ]);
 
-    const settings = orgDoc.exists ? orgDoc.data()?.settings || {} : {};
-    const leads = leadsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const calls = callsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const botConfigs = botConfigsSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    const team = teamSnap.docs.map((d) => ({ uid: d.id, ...d.data() }));
+    const settings = orgRow?.settings || {};
+    const leads = toCamelRows(leadsRows);
+    const calls = toCamelRows(callsRows);
+    const botConfigs = toCamelRows(botConfigsRows);
+    const team = toCamelRows(teamRows);
 
     return NextResponse.json({ profile, settings, leads, calls, botConfigs, team });
   } catch (error) {

@@ -1,22 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-
-async function getOrgId(request: NextRequest) {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) throw new Error("Unauthorized");
-  const idToken = authHeader.slice(7);
-  const decoded = await getAdminAuth().verifyIdToken(idToken);
-  const userDoc = await getAdminDb().collection("users").doc(decoded.uid).get();
-  if (!userDoc.exists) throw new Error("User not found");
-  return userDoc.data()!.orgId as string;
-}
+import { requireUidAndOrg, queryOne, query } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
-    const orgId = await getOrgId(request);
-    const db = getAdminDb();
-    const orgDoc = await db.collection("organizations").doc(orgId).get();
-    const settings = orgDoc.exists ? orgDoc.data()?.settings || {} : {};
+    const { orgId } = await requireUidAndOrg(request);
+    const row = await queryOne<{ settings: Record<string, unknown> }>(
+      "SELECT settings FROM organizations WHERE id = $1",
+      [orgId]
+    );
+    const settings = row?.settings || {};
     return NextResponse.json({ settings });
   } catch (error) {
     console.error("[Settings API] GET error:", error);
@@ -26,13 +18,15 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const orgId = await getOrgId(request);
-    const db = getAdminDb();
+    const { orgId } = await requireUidAndOrg(request);
     const { settings } = await request.json();
 
     // Read current settings and merge to avoid overwriting existing fields
-    const orgDoc = await db.collection("organizations").doc(orgId).get();
-    const current = orgDoc.exists ? orgDoc.data()?.settings ?? {} : {};
+    const row = await queryOne<{ settings: Record<string, unknown> }>(
+      "SELECT settings FROM organizations WHERE id = $1",
+      [orgId]
+    );
+    const current = (row?.settings || {}) as Record<string, Record<string, unknown>>;
     const merged = {
       ...current,
       ...settings,
@@ -41,7 +35,10 @@ export async function POST(request: NextRequest) {
       ai: { ...(current.ai ?? {}), ...(settings.ai ?? {}) },
     };
 
-    await db.collection("organizations").doc(orgId).update({ settings: merged, updatedAt: new Date().toISOString() });
+    await query(
+      "UPDATE organizations SET settings = $1, updated_at = NOW() WHERE id = $2",
+      [JSON.stringify(merged), orgId]
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
     console.error("[Settings API] POST error:", error);

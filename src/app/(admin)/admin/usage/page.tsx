@@ -13,13 +13,9 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import { getAllOrganizations } from "@/lib/firestore/organizations";
-import { getAllOrgsUsage } from "@/lib/firestore/usage";
 import type { Organization } from "@/types/user";
-import type { UsageRecord } from "@/types/billing";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -39,7 +35,7 @@ interface OrgUsageRow {
 }
 
 export default function AdminUsagePage() {
-  const { isSuperAdmin } = useAuth();
+  const { isSuperAdmin, user } = useAuth();
   const [rows, setRows] = useState<OrgUsageRow[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -54,44 +50,37 @@ export default function AdminUsagePage() {
   );
 
   useEffect(() => {
-    if (!isSuperAdmin) return;
+    if (!isSuperAdmin || !user) return;
     loadUsage();
-  }, [isSuperAdmin]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isSuperAdmin, user]);
 
   async function loadUsage() {
     try {
       setLoading(true);
-      const [orgs, usageRecords] = await Promise.all([
-        getAllOrganizations(),
-        getAllOrgsUsage(),
-      ]);
-
-      const orgMap = new Map<string, Organization>();
-      for (const org of orgs) {
-        orgMap.set(org.id, org);
-      }
-
-      const usageMap = new Map<string, UsageRecord>();
-      for (const u of usageRecords) {
-        usageMap.set(u.orgId, u);
-      }
+      const idToken = await user!.getIdToken();
+      const res = await fetch("/api/admin/organizations", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      const orgs: Organization[] = data.organizations || [];
 
       const result: OrgUsageRow[] = orgs.map((org) => {
-        const u = usageMap.get(org.id);
+        const u = (org as unknown as Record<string, Record<string, number>>).usage || {};
         return {
           orgId: org.id,
           orgName: org.name,
-          totalCalls: u?.totalCalls ?? 0,
-          totalMinutes: Math.round((u?.totalMinutes ?? 0) * 100) / 100,
-          completedCalls: u?.completedCalls ?? 0,
-          failedCalls: u?.failedCalls ?? 0,
+          totalCalls: u.totalCalls ?? 0,
+          totalMinutes: Math.round((u.totalMinutes ?? 0) * 100) / 100,
+          completedCalls: u.completedCalls ?? 0,
+          failedCalls: u.failedCalls ?? 0,
         };
       });
 
-      // Sort by total calls descending
       result.sort((a, b) => b.totalCalls - a.totalCalls);
       setRows(result);
-    } catch (err) {
+    } catch {
       toast.error("Failed to load usage data");
     } finally {
       setLoading(false);
@@ -99,43 +88,17 @@ export default function AdminUsagePage() {
   }
 
   const summaryCards = [
-    {
-      title: "Total Calls",
-      value: totals.totalCalls.toLocaleString(),
-      icon: Phone,
-      color: "text-blue-600",
-      bgColor: "bg-blue-500/10",
-    },
-    {
-      title: "Total Minutes",
-      value: Math.round(totals.totalMinutes * 100) / 100,
-      icon: Clock,
-      color: "text-emerald-600",
-      bgColor: "bg-emerald-500/10",
-    },
-    {
-      title: "Completed",
-      value: totals.completedCalls.toLocaleString(),
-      icon: CheckCircle,
-      color: "text-green-600",
-      bgColor: "bg-green-500/10",
-    },
-    {
-      title: "Failed",
-      value: totals.failedCalls.toLocaleString(),
-      icon: XCircle,
-      color: "text-red-600",
-      bgColor: "bg-red-500/10",
-    },
+    { title: "Total Calls", value: totals.totalCalls.toLocaleString(), icon: Phone, color: "text-blue-600", bgColor: "bg-blue-500/10" },
+    { title: "Total Minutes", value: Math.round(totals.totalMinutes * 100) / 100, icon: Clock, color: "text-emerald-600", bgColor: "bg-emerald-500/10" },
+    { title: "Completed", value: totals.completedCalls.toLocaleString(), icon: CheckCircle, color: "text-green-600", bgColor: "bg-green-500/10" },
+    { title: "Failed", value: totals.failedCalls.toLocaleString(), icon: XCircle, color: "text-red-600", bgColor: "bg-red-500/10" },
   ];
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Usage Analytics</h1>
-        <p className="text-muted-foreground">
-          Platform-wide usage statistics for the current month
-        </p>
+        <p className="text-muted-foreground">Platform-wide usage statistics for the current month</p>
       </div>
 
       {loading ? (
@@ -144,17 +107,11 @@ export default function AdminUsagePage() {
         </div>
       ) : (
         <>
-          {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {summaryCards.map((card, index) => {
               const Icon = card.icon;
               return (
-                <motion.div
-                  key={card.title}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.08 }}
-                >
+                <motion.div key={card.title} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08 }}>
                   <Card>
                     <CardContent className="flex items-center gap-4 pt-0">
                       <div className={`rounded-lg p-2.5 ${card.bgColor}`}>
@@ -171,12 +128,7 @@ export default function AdminUsagePage() {
             })}
           </div>
 
-          {/* Usage Table */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -186,9 +138,7 @@ export default function AdminUsagePage() {
               </CardHeader>
               <CardContent>
                 {rows.length === 0 ? (
-                  <p className="text-center py-8 text-muted-foreground">
-                    No usage data for this month
-                  </p>
+                  <p className="text-center py-8 text-muted-foreground">No usage data for this month</p>
                 ) : (
                   <Table>
                     <TableHeader>
@@ -204,18 +154,10 @@ export default function AdminUsagePage() {
                       {rows.map((row) => (
                         <TableRow key={row.orgId}>
                           <TableCell className="font-medium">{row.orgName}</TableCell>
-                          <TableCell className="text-right">
-                            {row.totalCalls.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {row.totalMinutes.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {row.completedCalls.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {row.failedCalls.toLocaleString()}
-                          </TableCell>
+                          <TableCell className="text-right">{row.totalCalls.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{row.totalMinutes.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{row.completedCalls.toLocaleString()}</TableCell>
+                          <TableCell className="text-right">{row.failedCalls.toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>

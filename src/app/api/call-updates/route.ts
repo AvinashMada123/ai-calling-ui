@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-helpers";
-import { getAdminDb } from "@/lib/firebase-admin";
+import { query } from "@/lib/db";
 import { getPendingUpdates } from "@/lib/call-updates-store";
 import type { CallEndedData } from "@/types/call";
 
@@ -12,7 +12,6 @@ export async function GET(request: NextRequest) {
   const authUser = await getAuthenticatedUser(request);
   const orgId = authUser?.orgId || "";
 
-  // Get active call UUIDs from query params
   const uuids = request.nextUrl.searchParams.get("uuids");
   if (!uuids) {
     return NextResponse.json({ updates: [] });
@@ -25,38 +24,36 @@ export async function GET(request: NextRequest) {
 
   const errors: string[] = [];
 
-  // Source 1: Check in-memory store (from webhook, if it landed on this instance)
+  // Source 1: Check in-memory store
   const pendingUpdates = getPendingUpdates(orgId);
   const resolvedUuids = new Set(pendingUpdates.map((u) => u.callUuid));
 
-  // Source 2: Check Firestore for calls with endedData
+  // Source 2: Check PostgreSQL for calls with endedData
   if (orgId) {
     try {
-      const db = getAdminDb();
-      const callsCol = db
-        .collection("organizations")
-        .doc(orgId)
-        .collection("calls");
+      const unresolvedFromDb = callUuids.filter((u) => !resolvedUuids.has(u));
+      if (unresolvedFromDb.length > 0) {
+        const batch = unresolvedFromDb.slice(0, 30);
+        // Build parameterized IN clause
+        const placeholders = batch.map((_, i) => `$${i + 2}`).join(", ");
+        const rows = await query(
+          `SELECT call_uuid, ended_data FROM ui_calls WHERE org_id = $1 AND call_uuid IN (${placeholders})`,
+          [orgId, ...batch]
+        );
 
-      const unresolvedFromFirestore = callUuids.filter((u) => !resolvedUuids.has(u));
-      if (unresolvedFromFirestore.length > 0) {
-        const batch = unresolvedFromFirestore.slice(0, 30);
-        const snap = await callsCol.where("callUuid", "in", batch).get();
-
-        for (const doc of snap.docs) {
-          const data = doc.data();
-          if (data.endedData && !resolvedUuids.has(data.callUuid)) {
+        for (const row of rows) {
+          if (row.ended_data && !resolvedUuids.has(row.call_uuid as string)) {
             pendingUpdates.push({
-              callUuid: data.callUuid,
-              data: data.endedData,
+              callUuid: row.call_uuid as string,
+              data: row.ended_data as CallEndedData,
               receivedAt: new Date().toISOString(),
             });
-            resolvedUuids.add(data.callUuid);
+            resolvedUuids.add(row.call_uuid as string);
           }
         }
       }
     } catch (error) {
-      errors.push(`Firestore: ${error instanceof Error ? error.message : String(error)}`);
+      errors.push(`DB: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 

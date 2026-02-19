@@ -5,9 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { doc, getDoc } from "firebase/firestore";
 
-import { db } from "@/lib/firebase";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,14 +43,16 @@ export default function InviteAcceptPage() {
           return;
         }
 
-        const inviteSnap = await getDoc(doc(db, "invites", token));
-        if (!inviteSnap.exists()) {
-          setInviteError("Invite not found. This link may be invalid.");
+        const res = await fetch(`/api/invite?token=${encodeURIComponent(token)}`);
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setInviteError(data.error || "Invite not found. This link may be invalid.");
           setInviteLoading(false);
           return;
         }
 
-        const inviteData = { id: inviteSnap.id, ...inviteSnap.data() } as Invite;
+        const data = await res.json();
+        const inviteData = data.invite as Invite;
 
         if (inviteData.status === "accepted") {
           setInviteError("This invite has already been used.");

@@ -7,7 +7,6 @@ import { Building2, Search, Loader2, ExternalLink, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import { getAllOrganizations } from "@/lib/firestore/organizations";
 import type { Organization } from "@/types/user";
 
 import { Button } from "@/components/ui/button";
@@ -59,7 +58,6 @@ export default function AdminClientsPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
 
-  // Create org dialog state
   const [createOpen, setCreateOpen] = useState(false);
   const [newOrgName, setNewOrgName] = useState("");
   const [newOrgPlan, setNewOrgPlan] = useState("free");
@@ -69,13 +67,19 @@ export default function AdminClientsPage() {
   useEffect(() => {
     if (!isSuperAdmin) return;
     loadOrgs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSuperAdmin]);
 
   async function loadOrgs() {
     try {
       setLoading(true);
-      const data = await getAllOrganizations();
-      setOrgs(data);
+      const idToken = await user!.getIdToken();
+      const res = await fetch("/api/admin/organizations", {
+        headers: { Authorization: `Bearer ${idToken}` },
+      });
+      if (!res.ok) throw new Error("Failed to load");
+      const data = await res.json();
+      setOrgs(data.organizations || []);
     } catch {
       toast.error("Failed to load organizations");
     } finally {
@@ -93,10 +97,7 @@ export default function AdminClientsPage() {
       const idToken = await user!.getIdToken();
       const res = await fetch("/api/admin/organizations", {
         method: "POST",
-        headers: {
-          Authorization: `Bearer ${idToken}`,
-          "Content-Type": "application/json",
-        },
+        headers: { Authorization: `Bearer ${idToken}`, "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "create",
           orgName: newOrgName.trim(),
@@ -137,9 +138,7 @@ export default function AdminClientsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Client Organizations</h1>
-          <p className="text-muted-foreground">
-            View and manage all organizations on the platform
-          </p>
+          <p className="text-muted-foreground">View and manage all organizations on the platform</p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>
           <Plus className="size-4" />
@@ -156,12 +155,7 @@ export default function AdminClientsPage() {
             </div>
             <div className="relative w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-              <Input
-                placeholder="Search organizations..."
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="pl-9"
-              />
+              <Input placeholder="Search organizations..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" />
             </div>
           </div>
         </CardHeader>
@@ -188,39 +182,14 @@ export default function AdminClientsPage() {
               </TableHeader>
               <TableBody>
                 {filteredOrgs.map((org, index) => (
-                  <motion.tr
-                    key={org.id}
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: index * 0.03 }}
-                    className="hover:bg-muted/50 border-b transition-colors cursor-pointer"
-                    onClick={() => router.push(`/admin/clients/${org.id}`)}
-                  >
+                  <motion.tr key={org.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.03 }} className="hover:bg-muted/50 border-b transition-colors cursor-pointer" onClick={() => router.push(`/admin/clients/${org.id}`)}>
                     <TableCell className="font-medium">{org.name}</TableCell>
-                    <TableCell>
-                      <Badge className={planColors[org.plan] ?? planColors.free}>
-                        {org.plan.charAt(0).toUpperCase() + org.plan.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className={statusColors[org.status] ?? statusColors.active}>
-                        {org.status.charAt(0).toUpperCase() + org.status.slice(1)}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(org.createdAt).toLocaleDateString()}
-                    </TableCell>
+                    <TableCell><Badge className={planColors[org.plan] ?? planColors.free}>{org.plan.charAt(0).toUpperCase() + org.plan.slice(1)}</Badge></TableCell>
+                    <TableCell><Badge className={statusColors[org.status] ?? statusColors.active}>{org.status.charAt(0).toUpperCase() + org.status.slice(1)}</Badge></TableCell>
+                    <TableCell className="text-muted-foreground">{new Date(org.createdAt).toLocaleDateString()}</TableCell>
                     <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/admin/clients/${org.id}`);
-                        }}
-                      >
-                        <ExternalLink className="size-3.5" />
-                        View
+                      <Button variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); router.push(`/admin/clients/${org.id}`); }}>
+                        <ExternalLink className="size-3.5" />View
                       </Button>
                     </TableCell>
                   </motion.tr>
@@ -231,31 +200,21 @@ export default function AdminClientsPage() {
         </CardContent>
       </Card>
 
-      {/* Create Organization Dialog */}
       <Dialog open={createOpen} onOpenChange={setCreateOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Create New Organization</DialogTitle>
-            <DialogDescription>
-              Set up a new client organization. Optionally invite an admin.
-            </DialogDescription>
+            <DialogDescription>Set up a new client organization. Optionally invite an admin.</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
               <Label htmlFor="org-name">Organization Name</Label>
-              <Input
-                id="org-name"
-                placeholder="Acme Corp"
-                value={newOrgName}
-                onChange={(e) => setNewOrgName(e.target.value)}
-              />
+              <Input id="org-name" placeholder="Acme Corp" value={newOrgName} onChange={(e) => setNewOrgName(e.target.value)} />
             </div>
             <div className="space-y-2">
               <Label>Plan</Label>
               <Select value={newOrgPlan} onValueChange={setNewOrgPlan}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="free">Free</SelectItem>
                   <SelectItem value="starter">Starter</SelectItem>
@@ -266,22 +225,12 @@ export default function AdminClientsPage() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="admin-email">Admin Email (optional)</Label>
-              <Input
-                id="admin-email"
-                type="email"
-                placeholder="admin@acmecorp.com"
-                value={newOrgEmail}
-                onChange={(e) => setNewOrgEmail(e.target.value)}
-              />
-              <p className="text-xs text-muted-foreground">
-                An invite link will be created. Share it with the recipient to let them sign up as the org admin.
-              </p>
+              <Input id="admin-email" type="email" placeholder="admin@acmecorp.com" value={newOrgEmail} onChange={(e) => setNewOrgEmail(e.target.value)} />
+              <p className="text-xs text-muted-foreground">An invite link will be created. Share it with the recipient to let them sign up as the org admin.</p>
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setCreateOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant="outline" onClick={() => setCreateOpen(false)}>Cancel</Button>
             <Button onClick={handleCreateOrg} disabled={creating}>
               {creating && <Loader2 className="size-4 animate-spin" />}
               Create Organization

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { queryOne } from "@/lib/db";
 
 export async function GET(
   request: NextRequest,
@@ -8,48 +8,48 @@ export async function GET(
   try {
     const { orgId } = await params;
 
-    // Simple API key auth (from query param)
-    const apiKey = request.nextUrl.searchParams.get("apiKey");
-
-    // Fetch org to verify it exists
-    const orgDoc = await adminDb.collection("organizations").doc(orgId).get();
-    if (!orgDoc.exists) {
+    // Verify org exists
+    const orgRow = await queryOne<{ settings: Record<string, unknown>; name: string }>(
+      "SELECT name, settings FROM organizations WHERE id = $1",
+      [orgId]
+    );
+    if (!orgRow) {
       return NextResponse.json({ error: "Organization not found" }, { status: 404 });
     }
 
     // Fetch active bot config
-    const configsSnap = await adminDb
-      .collection("organizations")
-      .doc(orgId)
-      .collection("botConfigs")
-      .where("isActive", "==", true)
-      .limit(1)
-      .get();
+    const config = await queryOne(
+      "SELECT * FROM bot_configs WHERE org_id = $1 AND is_active = true LIMIT 1",
+      [orgId]
+    );
 
-    if (configsSnap.empty) {
+    if (!config) {
       return NextResponse.json({ error: "No active bot config" }, { status: 404 });
     }
 
-    const config = configsSnap.docs[0].data();
-    const orgData = orgDoc.data();
-    const settings = orgData?.settings?.defaults || {};
+    const settings = ((orgRow.settings as Record<string, Record<string, string>>) || {}).defaults || {};
 
     // Format for n8n consumption
+    const questions = ((config.questions as Array<{ id: string; prompt: string; order: number }>) || [])
+      .sort((a, b) => a.order - b.order)
+      .map((q) => ({ id: q.id, prompt: q.prompt }));
+
+    const objections = Object.fromEntries(
+      ((config.objections as Array<{ key: string; response: string }>) || []).map((o) => [o.key, o.response])
+    );
+
+    const objectionKeywords = (config.objection_keywords as Record<string, string[]>) || Object.fromEntries(
+      ((config.objections as Array<{ key: string; keywords: string[] }>) || []).map((o) => [o.key, o.keywords])
+    );
+
     const response = {
       prompt: config.prompt,
-      questions: config.questions.sort((a: any, b: any) => a.order - b.order).map((q: any) => ({
-        id: q.id,
-        prompt: q.prompt,
-      })),
-      objections: Object.fromEntries(
-        (config.objections || []).map((o: any) => [o.key, o.response])
-      ),
-      objectionKeywords: config.objectionKeywords || Object.fromEntries(
-        (config.objections || []).map((o: any) => [o.key, o.keywords])
-      ),
+      questions,
+      objections,
+      objectionKeywords,
       context: {
         agent_name: settings.agentName || "Agent",
-        company_name: settings.companyName || orgData?.name || "",
+        company_name: settings.companyName || orgRow.name || "",
         event_host: settings.eventHost || "",
         location: settings.location || "",
       },

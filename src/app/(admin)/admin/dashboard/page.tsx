@@ -19,10 +19,7 @@ import {
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import { getAllOrganizations } from "@/lib/firestore/organizations";
-import { getAllOrgsUsage } from "@/lib/firestore/usage";
 import type { Organization } from "@/types/user";
-import type { UsageRecord } from "@/types/billing";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -125,34 +122,24 @@ export default function AdminDashboardPage() {
       setLoading(true);
 
       const idToken = await user!.getIdToken();
+      const headers = { Authorization: `Bearer ${idToken}` };
 
-      // Fetch all data in parallel with timeout protection
       const fetchPromise = Promise.all([
-        getAllOrganizations(),
-        getAllOrgsUsage(),
-        fetch("/api/admin/stats", {
-          headers: { Authorization: `Bearer ${idToken}` },
-        }).then((r) => {
-          if (!r.ok) {
-            console.error("[Admin Dashboard] Stats API error:", r.status, r.statusText);
-            return null;
-          }
-          return r.json();
-        }),
+        fetch("/api/admin/organizations", { headers }).then((r) => r.ok ? r.json() : null),
+        fetch("/api/admin/stats", { headers }).then((r) => r.ok ? r.json() : null),
       ]);
 
-      // Add timeout to prevent indefinite loading (30 seconds)
       const timeoutPromise = new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("Request timeout")), 30000)
       );
 
-      const [orgs, usageRecords, statsRes] = await Promise.race([
-        fetchPromise,
-        timeoutPromise,
-      ]);
+      const [orgsRes, statsRes] = await Promise.race([fetchPromise, timeoutPromise]);
 
-      const totalCalls = usageRecords.reduce((sum, u) => sum + (u.totalCalls ?? 0), 0);
-      const totalMinutes = usageRecords.reduce((sum, u) => sum + (u.totalMinutes ?? 0), 0);
+      const orgs: Organization[] = orgsRes?.organizations || [];
+
+      // Build usage from org.usage JSONB
+      const totalCalls = orgs.reduce((sum, o) => sum + ((o as unknown as Record<string, Record<string, number>>).usage?.totalCalls ?? 0), 0);
+      const totalMinutes = orgs.reduce((sum, o) => sum + ((o as unknown as Record<string, Record<string, number>>).usage?.totalMinutes ?? 0), 0);
 
       setStats({
         totalOrgs: orgs.length,
@@ -161,26 +148,25 @@ export default function AdminDashboardPage() {
         totalMinutesThisMonth: Math.round(totalMinutes * 100) / 100,
       });
 
-      // Recent activity from stats API
       if (statsRes) {
         setRecentSignups(statsRes.recentSignups || []);
         setRecentCalls(statsRes.recentCalls || []);
       }
 
-      // Build top clients from usage + orgs
-      const orgMap = new Map<string, Organization>();
-      for (const o of orgs) orgMap.set(o.id, o);
-
-      const topClientsData: TopClient[] = usageRecords
-        .filter((u) => u.totalCalls > 0)
-        .sort((a, b) => b.totalCalls - a.totalCalls)
+      // Build top clients from usage
+      const topClientsData: TopClient[] = orgs
+        .filter((o) => ((o as unknown as Record<string, Record<string, number>>).usage?.totalCalls ?? 0) > 0)
+        .sort((a, b) =>
+          ((b as unknown as Record<string, Record<string, number>>).usage?.totalCalls ?? 0) -
+          ((a as unknown as Record<string, Record<string, number>>).usage?.totalCalls ?? 0)
+        )
         .slice(0, 5)
-        .map((u) => ({
-          orgId: u.orgId,
-          name: orgMap.get(u.orgId)?.name || "Unknown",
-          totalCalls: u.totalCalls,
-          totalMinutes: Math.round(u.totalMinutes * 100) / 100,
-          plan: orgMap.get(u.orgId)?.plan || "free",
+        .map((o) => ({
+          orgId: o.id,
+          name: o.name,
+          totalCalls: (o as unknown as Record<string, Record<string, number>>).usage?.totalCalls ?? 0,
+          totalMinutes: Math.round(((o as unknown as Record<string, Record<string, number>>).usage?.totalMinutes ?? 0) * 100) / 100,
+          plan: o.plan,
         }));
       setTopClients(topClientsData);
     } catch (error) {
@@ -196,34 +182,10 @@ export default function AdminDashboardPage() {
   }
 
   const cards = [
-    {
-      title: "Total Organizations",
-      value: stats.totalOrgs,
-      icon: Building2,
-      color: "text-blue-600",
-      bgColor: "bg-blue-500/10",
-    },
-    {
-      title: "Total Users",
-      value: stats.totalUsers,
-      icon: Users,
-      color: "text-violet-600",
-      bgColor: "bg-violet-500/10",
-    },
-    {
-      title: "Calls This Month",
-      value: stats.totalCallsThisMonth.toLocaleString(),
-      icon: Phone,
-      color: "text-emerald-600",
-      bgColor: "bg-emerald-500/10",
-    },
-    {
-      title: "Minutes This Month",
-      value: stats.totalMinutesThisMonth.toLocaleString(),
-      icon: Clock,
-      color: "text-amber-600",
-      bgColor: "bg-amber-500/10",
-    },
+    { title: "Total Organizations", value: stats.totalOrgs, icon: Building2, color: "text-blue-600", bgColor: "bg-blue-500/10" },
+    { title: "Total Users", value: stats.totalUsers, icon: Users, color: "text-violet-600", bgColor: "bg-violet-500/10" },
+    { title: "Calls This Month", value: stats.totalCallsThisMonth.toLocaleString(), icon: Phone, color: "text-emerald-600", bgColor: "bg-emerald-500/10" },
+    { title: "Minutes This Month", value: stats.totalMinutesThisMonth.toLocaleString(), icon: Clock, color: "text-amber-600", bgColor: "bg-amber-500/10" },
   ];
 
   if (loading) {
@@ -231,9 +193,7 @@ export default function AdminDashboardPage() {
       <div className="space-y-6">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            Platform-wide overview and statistics
-          </p>
+          <p className="text-muted-foreground">Platform-wide overview and statistics</p>
         </div>
         <div className="flex items-center justify-center py-20">
           <Loader2 className="size-8 animate-spin text-muted-foreground" />
@@ -246,28 +206,18 @@ export default function AdminDashboardPage() {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Admin Dashboard</h1>
-        <p className="text-muted-foreground">
-          Platform-wide overview and statistics
-        </p>
+        <p className="text-muted-foreground">Platform-wide overview and statistics</p>
       </div>
 
-      {/* Stat Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {cards.map((card, index) => {
           const Icon = card.icon;
           return (
-            <motion.div
-              key={card.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.08 }}
-            >
+            <motion.div key={card.title} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08 }}>
               <Card>
                 <CardHeader>
                   <div className="flex items-center justify-between">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      {card.title}
-                    </CardTitle>
+                    <CardTitle className="text-sm font-medium text-muted-foreground">{card.title}</CardTitle>
                     <div className={`rounded-lg p-2 ${card.bgColor}`}>
                       <Icon className={`size-4 ${card.color}`} />
                     </div>
@@ -282,16 +232,9 @@ export default function AdminDashboardPage() {
         })}
       </div>
 
-      {/* Main Content Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left column: Activity + Top Clients (2/3 width) */}
         <div className="lg:col-span-2 space-y-6">
-          {/* Recent Calls */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -299,56 +242,22 @@ export default function AdminDashboardPage() {
                     <Phone className="size-5 text-muted-foreground" />
                     <CardTitle>Recent Calls</CardTitle>
                   </div>
-                  <Link href="/admin/usage">
-                    <Button variant="ghost" size="sm">
-                      View All <ArrowRight className="size-4" />
-                    </Button>
-                  </Link>
+                  <Link href="/admin/usage"><Button variant="ghost" size="sm">View All <ArrowRight className="size-4" /></Button></Link>
                 </div>
               </CardHeader>
               <CardContent>
                 {recentCalls.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-6">
-                    No recent calls
-                  </p>
+                  <p className="text-muted-foreground text-center py-6">No recent calls</p>
                 ) : (
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Contact</TableHead>
-                        <TableHead>Organization</TableHead>
-                        <TableHead>Status</TableHead>
-                        <TableHead>When</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Contact</TableHead><TableHead>Organization</TableHead><TableHead>Status</TableHead><TableHead>When</TableHead></TableRow></TableHeader>
                     <TableBody>
                       {recentCalls.map((call) => (
                         <TableRow key={call.id}>
-                          <TableCell className="font-medium">
-                            {call.contactName}
-                          </TableCell>
-                          <TableCell>
-                            <Link
-                              href={`/admin/clients/${call.orgId}`}
-                              className="text-muted-foreground hover:text-foreground transition-colors"
-                            >
-                              {call.orgName}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              className={
-                                statusColors[call.status] ??
-                                "bg-zinc-500/15 text-zinc-600 border-zinc-500/20"
-                              }
-                            >
-                              {call.status.charAt(0).toUpperCase() +
-                                call.status.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {timeAgo(call.initiatedAt)}
-                          </TableCell>
+                          <TableCell className="font-medium">{call.contactName}</TableCell>
+                          <TableCell><Link href={`/admin/clients/${call.orgId}`} className="text-muted-foreground hover:text-foreground transition-colors">{call.orgName}</Link></TableCell>
+                          <TableCell><Badge className={statusColors[call.status] ?? "bg-zinc-500/15 text-zinc-600 border-zinc-500/20"}>{call.status.charAt(0).toUpperCase() + call.status.slice(1)}</Badge></TableCell>
+                          <TableCell className="text-muted-foreground">{timeAgo(call.initiatedAt)}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -358,12 +267,7 @@ export default function AdminDashboardPage() {
             </Card>
           </motion.div>
 
-          {/* Top Clients This Month */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.45 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
             <Card>
               <CardHeader>
                 <div className="flex items-center justify-between">
@@ -371,55 +275,22 @@ export default function AdminDashboardPage() {
                     <BarChart3 className="size-5 text-muted-foreground" />
                     <CardTitle>Top Clients This Month</CardTitle>
                   </div>
-                  <Link href="/admin/clients">
-                    <Button variant="ghost" size="sm">
-                      View All <ArrowRight className="size-4" />
-                    </Button>
-                  </Link>
+                  <Link href="/admin/clients"><Button variant="ghost" size="sm">View All <ArrowRight className="size-4" /></Button></Link>
                 </div>
               </CardHeader>
               <CardContent>
                 {topClients.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-6">
-                    No usage data this month
-                  </p>
+                  <p className="text-muted-foreground text-center py-6">No usage data this month</p>
                 ) : (
                   <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Organization</TableHead>
-                        <TableHead>Plan</TableHead>
-                        <TableHead className="text-right">Calls</TableHead>
-                        <TableHead className="text-right">Minutes</TableHead>
-                      </TableRow>
-                    </TableHeader>
+                    <TableHeader><TableRow><TableHead>Organization</TableHead><TableHead>Plan</TableHead><TableHead className="text-right">Calls</TableHead><TableHead className="text-right">Minutes</TableHead></TableRow></TableHeader>
                     <TableBody>
                       {topClients.map((client) => (
                         <TableRow key={client.orgId}>
-                          <TableCell>
-                            <Link
-                              href={`/admin/clients/${client.orgId}`}
-                              className="font-medium hover:underline"
-                            >
-                              {client.name}
-                            </Link>
-                          </TableCell>
-                          <TableCell>
-                            <Badge
-                              className={
-                                planColors[client.plan] ?? planColors.free
-                              }
-                            >
-                              {client.plan.charAt(0).toUpperCase() +
-                                client.plan.slice(1)}
-                            </Badge>
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {client.totalCalls.toLocaleString()}
-                          </TableCell>
-                          <TableCell className="text-right text-muted-foreground">
-                            {client.totalMinutes.toLocaleString()}
-                          </TableCell>
+                          <TableCell><Link href={`/admin/clients/${client.orgId}`} className="font-medium hover:underline">{client.name}</Link></TableCell>
+                          <TableCell><Badge className={planColors[client.plan] ?? planColors.free}>{client.plan.charAt(0).toUpperCase() + client.plan.slice(1)}</Badge></TableCell>
+                          <TableCell className="text-right font-medium">{client.totalCalls.toLocaleString()}</TableCell>
+                          <TableCell className="text-right text-muted-foreground">{client.totalMinutes.toLocaleString()}</TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
@@ -430,14 +301,8 @@ export default function AdminDashboardPage() {
           </motion.div>
         </div>
 
-        {/* Right column: Quick Actions + Recent Signups (1/3 width) */}
         <div className="space-y-6">
-          {/* Quick Actions */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.35 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -446,40 +311,15 @@ export default function AdminDashboardPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-2">
-                <Link href="/admin/clients" className="block">
-                  <Button variant="outline" className="w-full justify-start gap-2">
-                    <Plus className="size-4" />
-                    Add New Client
-                  </Button>
-                </Link>
-                <Link href="/admin/clients" className="block">
-                  <Button variant="outline" className="w-full justify-start gap-2">
-                    <Building2 className="size-4" />
-                    View All Clients
-                  </Button>
-                </Link>
-                <Link href="/admin/usage" className="block">
-                  <Button variant="outline" className="w-full justify-start gap-2">
-                    <BarChart3 className="size-4" />
-                    Usage Analytics
-                  </Button>
-                </Link>
-                <Link href="/admin/billing" className="block">
-                  <Button variant="outline" className="w-full justify-start gap-2">
-                    <CreditCard className="size-4" />
-                    Billing Overview
-                  </Button>
-                </Link>
+                <Link href="/admin/clients" className="block"><Button variant="outline" className="w-full justify-start gap-2"><Plus className="size-4" />Add New Client</Button></Link>
+                <Link href="/admin/clients" className="block"><Button variant="outline" className="w-full justify-start gap-2"><Building2 className="size-4" />View All Clients</Button></Link>
+                <Link href="/admin/usage" className="block"><Button variant="outline" className="w-full justify-start gap-2"><BarChart3 className="size-4" />Usage Analytics</Button></Link>
+                <Link href="/admin/billing" className="block"><Button variant="outline" className="w-full justify-start gap-2"><CreditCard className="size-4" />Billing Overview</Button></Link>
               </CardContent>
             </Card>
           </motion.div>
 
-          {/* Recent Signups */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.45 }}
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
             <Card>
               <CardHeader>
                 <div className="flex items-center gap-2">
@@ -489,27 +329,16 @@ export default function AdminDashboardPage() {
               </CardHeader>
               <CardContent>
                 {recentSignups.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-6">
-                    No recent signups
-                  </p>
+                  <p className="text-muted-foreground text-center py-6">No recent signups</p>
                 ) : (
                   <div className="space-y-3">
                     {recentSignups.slice(0, 8).map((signup) => (
-                      <div
-                        key={signup.uid}
-                        className="flex items-start justify-between gap-2"
-                      >
+                      <div key={signup.uid} className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate">
-                            {signup.displayName || signup.email}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {signup.orgName}
-                          </p>
+                          <p className="text-sm font-medium truncate">{signup.displayName || signup.email}</p>
+                          <p className="text-xs text-muted-foreground truncate">{signup.orgName}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground whitespace-nowrap">
-                          {timeAgo(signup.createdAt)}
-                        </p>
+                        <p className="text-xs text-muted-foreground whitespace-nowrap">{timeAgo(signup.createdAt)}</p>
                       </div>
                     ))}
                   </div>

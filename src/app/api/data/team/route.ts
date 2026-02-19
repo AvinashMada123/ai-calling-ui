@@ -1,35 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-
-async function getOrgId(request: NextRequest): Promise<{ orgId: string; uid: string } | NextResponse> {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const idToken = authHeader.slice(7);
-  const decoded = await getAdminAuth().verifyIdToken(idToken);
-  const db = getAdminDb();
-  const userDoc = await db.collection("users").doc(decoded.uid).get();
-  if (!userDoc.exists) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
-  }
-  return { orgId: userDoc.data()!.orgId as string, uid: decoded.uid };
-}
+import { getUidAndOrgFromToken, query, queryOne, toCamelRows } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId } = result;
 
-    const db = getAdminDb();
-    const snap = await db
-      .collection("users")
-      .where("orgId", "==", orgId)
-      .get();
-
-    const members = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-    return NextResponse.json({ members });
+    const rows = await query(
+      "SELECT uid, email, display_name, role, org_id, status, created_at, last_login_at FROM users WHERE org_id = $1",
+      [orgId]
+    );
+    return NextResponse.json({ members: toCamelRows(rows) });
   } catch (error) {
     console.error("[Team API] GET error:", error);
     return NextResponse.json({ error: "Failed to load" }, { status: 500 });
@@ -38,35 +20,41 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId, uid } = result;
 
     const body = await request.json();
     const { action } = body;
-    const db = getAdminDb();
 
     switch (action) {
       case "invite": {
         const { email, role } = body;
         // Get org name
-        const orgDoc = await db.collection("organizations").doc(orgId).get();
-        const orgName = orgDoc.exists ? orgDoc.data()?.name ?? "Organization" : "Organization";
+        const orgRow = await queryOne<{ name: string }>(
+          "SELECT name FROM organizations WHERE id = $1",
+          [orgId]
+        );
+        const orgName = orgRow?.name ?? "Organization";
 
         const inviteId = crypto.randomUUID();
         const now = new Date();
-        const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000); // 7 days
+        const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-        await db.collection("invites").doc(inviteId).set({
-          email: email.trim().toLowerCase(),
-          orgId,
-          orgName,
-          role,
-          invitedBy: uid,
-          status: "pending",
-          createdAt: now.toISOString(),
-          expiresAt: expiresAt.toISOString(),
-        });
+        await query(
+          `INSERT INTO invites (id, email, org_id, org_name, role, invited_by, status, created_at, expires_at)
+           VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)`,
+          [
+            inviteId,
+            email.trim().toLowerCase(),
+            orgId,
+            orgName,
+            role,
+            uid,
+            now.toISOString(),
+            expiresAt.toISOString(),
+          ]
+        );
 
         return NextResponse.json({ success: true, inviteId });
       }

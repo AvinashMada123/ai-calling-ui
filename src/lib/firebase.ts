@@ -1,6 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
 import { getAuth, type Auth } from "firebase/auth";
-import { getFirestore, type Firestore } from "firebase/firestore";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
@@ -13,7 +12,6 @@ const firebaseConfig = {
 
 let _app: FirebaseApp | null = null;
 let _auth: Auth | null = null;
-let _db: Firestore | null = null;
 
 function getFirebaseApp(): FirebaseApp {
   if (_app) return _app;
@@ -27,16 +25,9 @@ function getFirebaseAuth(): Auth {
   return _auth;
 }
 
-function getFirebaseDb(): Firestore {
-  if (_db) return _db;
-  _db = getFirestore(getFirebaseApp());
-  return _db;
-}
-
 // Lazy getters — only initialize when actually accessed at runtime
 export const app = typeof window !== "undefined" ? getFirebaseApp() : ({} as FirebaseApp);
 export const auth = typeof window !== "undefined" ? getFirebaseAuth() : ({} as Auth);
-export const db = typeof window !== "undefined" ? getFirebaseDb() : ({} as Firestore);
 
 // Export getters for code that needs to ensure runtime initialization
-export { getFirebaseApp, getFirebaseAuth, getFirebaseDb };
+export { getFirebaseApp, getFirebaseAuth };

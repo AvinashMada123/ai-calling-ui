@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { getAdminAuth } from "@/lib/firebase-admin";
+import { queryOne, query, toCamel } from "@/lib/db";
 
 const SESSION_COOKIE_NAME = "__session";
 const SESSION_EXPIRY = 60 * 60 * 24 * 14 * 1000; // 14 days
@@ -18,20 +19,19 @@ export async function POST(request: NextRequest) {
     const adminAuth = getAdminAuth();
     const decoded = await adminAuth.verifyIdToken(idToken);
 
-    // Fetch profile + update last login in parallel
-    const adminDb = getAdminDb();
-    const userRef = adminDb.collection("users").doc(decoded.uid);
-    const [userDoc, sessionCookie] = await Promise.all([
-      userRef.get(),
+    // Fetch profile + create session cookie in parallel
+    const [row, sessionCookie] = await Promise.all([
+      queryOne(
+        "SELECT uid, email, display_name, role, org_id, status, created_at, last_login_at, invited_by FROM users WHERE uid = $1",
+        [decoded.uid]
+      ),
       adminAuth.createSessionCookie(idToken, { expiresIn: SESSION_EXPIRY }),
     ]);
 
     // Update last login (fire-and-forget)
-    userRef.update({ lastLoginAt: new Date().toISOString() }).catch(() => {});
+    query("UPDATE users SET last_login_at = NOW() WHERE uid = $1", [decoded.uid]).catch(() => {});
 
-    const profile = userDoc.exists
-      ? { uid: decoded.uid, ...userDoc.data() }
-      : null;
+    const profile = row ? toCamel(row) : null;
 
     const response = NextResponse.json({ success: true, profile });
 

@@ -60,7 +60,7 @@ export function useCalls() {
 
     const poll = async () => {
       try {
-        // Collect UUIDs of active calls to check their status in Firestore
+        // Collect UUIDs of active calls to check their status
         const activeUuids = state.calls
           .filter((c) => (c.status === "initiating" || c.status === "in-progress") && c.callUuid)
           .map((c) => c.callUuid);

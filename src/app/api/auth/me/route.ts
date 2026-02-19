@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { getAdminAuth } from "@/lib/firebase-admin";
+import { queryOne, toCamel } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
@@ -9,19 +10,18 @@ export async function GET(request: NextRequest) {
     }
 
     const idToken = authHeader.slice(7);
-    const adminAuth = getAdminAuth();
-    const decoded = await adminAuth.verifyIdToken(idToken);
+    const decoded = await getAdminAuth().verifyIdToken(idToken);
 
-    const adminDb = getAdminDb();
-    const userDoc = await adminDb.collection("users").doc(decoded.uid).get();
+    const row = await queryOne(
+      "SELECT uid, email, display_name, role, org_id, status, created_at, last_login_at, invited_by FROM users WHERE uid = $1",
+      [decoded.uid]
+    );
 
-    if (!userDoc.exists) {
+    if (!row) {
       return NextResponse.json({ profile: null });
     }
 
-    return NextResponse.json({
-      profile: { uid: decoded.uid, ...userDoc.data() },
-    });
+    return NextResponse.json({ profile: toCamel(row) });
   } catch (error) {
     console.error("[Auth/Me] Error:", error);
     return NextResponse.json({ profile: null }, { status: 401 });

@@ -1,40 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
-
-async function getOrgId(request: NextRequest): Promise<{ orgId: string; uid: string } | NextResponse> {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const idToken = authHeader.slice(7);
-  const decoded = await getAdminAuth().verifyIdToken(idToken);
-  const db = getAdminDb();
-  const userDoc = await db.collection("users").doc(decoded.uid).get();
-  if (!userDoc.exists) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
-  }
-  return { orgId: userDoc.data()!.orgId as string, uid: decoded.uid };
-}
+import { getUidAndOrgFromToken, query, toCamelRows } from "@/lib/db";
 
 export async function GET(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId } = result;
 
-    const db = getAdminDb();
-    const spRef = db.collection("organizations").doc(orgId).collection("socialProof");
-
-    const [companiesDoc, citiesDoc, rolesDoc] = await Promise.all([
-      spRef.doc("companies").get(),
-      spRef.doc("cities").get(),
-      spRef.doc("roles").get(),
+    const [companies, cities, roles] = await Promise.all([
+      query("SELECT * FROM ui_social_proof_companies WHERE org_id = $1", [orgId]),
+      query("SELECT * FROM ui_social_proof_cities WHERE org_id = $1", [orgId]),
+      query("SELECT * FROM ui_social_proof_roles WHERE org_id = $1", [orgId]),
     ]);
 
     return NextResponse.json({
-      companies: companiesDoc.exists ? (companiesDoc.data()?.items || []) : [],
-      cities: citiesDoc.exists ? (citiesDoc.data()?.items || []) : [],
-      roles: rolesDoc.exists ? (rolesDoc.data()?.items || []) : [],
+      companies: toCamelRows(companies),
+      cities: toCamelRows(cities),
+      roles: toCamelRows(roles),
     });
   } catch (error) {
     console.error("[Social Proof API] GET error:", error);
@@ -44,85 +26,60 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId } = result;
 
     const body = await request.json();
     const { action } = body;
-    const db = getAdminDb();
-    const spRef = db.collection("organizations").doc(orgId).collection("socialProof");
+    const now = new Date().toISOString();
 
     switch (action) {
       case "upsertCompany": {
         const { company } = body;
-        const docRef = spRef.doc("companies");
-        const doc = await docRef.get();
-        const items = doc.exists ? (doc.data()?.items || []) : [];
-        const idx = items.findIndex((c: { id: string }) => c.id === company.id);
-        if (idx >= 0) {
-          items[idx] = company;
-        } else {
-          items.push(company);
-        }
-        await docRef.set({ items });
+        await query(
+          `INSERT INTO ui_social_proof_companies (id, org_id, company_name, enrollments_count, notable_outcomes, trending, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (id) DO UPDATE SET company_name = $3, enrollments_count = $4, notable_outcomes = $5, trending = $6, updated_at = $7`,
+          [company.id, orgId, company.companyName, company.enrollmentsCount || 0, company.notableOutcomes || "", company.trending ?? false, now]
+        );
         return NextResponse.json({ success: true });
       }
       case "deleteCompany": {
         const { companyId } = body;
-        const docRef = spRef.doc("companies");
-        const doc = await docRef.get();
-        const items = (doc.exists ? (doc.data()?.items || []) : [])
-          .filter((c: { id: string }) => c.id !== companyId);
-        await docRef.set({ items });
+        await query("DELETE FROM ui_social_proof_companies WHERE id = $1 AND org_id = $2", [companyId, orgId]);
         return NextResponse.json({ success: true });
       }
 
       case "upsertCity": {
         const { city } = body;
-        const docRef = spRef.doc("cities");
-        const doc = await docRef.get();
-        const items = doc.exists ? (doc.data()?.items || []) : [];
-        const idx = items.findIndex((c: { id: string }) => c.id === city.id);
-        if (idx >= 0) {
-          items[idx] = city;
-        } else {
-          items.push(city);
-        }
-        await docRef.set({ items });
+        await query(
+          `INSERT INTO ui_social_proof_cities (id, org_id, city_name, enrollments_count, trending, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (id) DO UPDATE SET city_name = $3, enrollments_count = $4, trending = $5, updated_at = $6`,
+          [city.id, orgId, city.cityName, city.enrollmentsCount || 0, city.trending ?? false, now]
+        );
         return NextResponse.json({ success: true });
       }
       case "deleteCity": {
         const { cityId } = body;
-        const docRef = spRef.doc("cities");
-        const doc = await docRef.get();
-        const items = (doc.exists ? (doc.data()?.items || []) : [])
-          .filter((c: { id: string }) => c.id !== cityId);
-        await docRef.set({ items });
+        await query("DELETE FROM ui_social_proof_cities WHERE id = $1 AND org_id = $2", [cityId, orgId]);
         return NextResponse.json({ success: true });
       }
 
       case "upsertRole": {
         const { role } = body;
-        const docRef = spRef.doc("roles");
-        const doc = await docRef.get();
-        const items = doc.exists ? (doc.data()?.items || []) : [];
-        const idx = items.findIndex((r: { id: string }) => r.id === role.id);
-        if (idx >= 0) {
-          items[idx] = role;
-        } else {
-          items.push(role);
-        }
-        await docRef.set({ items });
+        await query(
+          `INSERT INTO ui_social_proof_roles (id, org_id, role_name, enrollments_count, success_stories, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (id) DO UPDATE SET role_name = $3, enrollments_count = $4, success_stories = $5, updated_at = $6`,
+          [role.id, orgId, role.roleName, role.enrollmentsCount || 0, role.successStories || "", now]
+        );
         return NextResponse.json({ success: true });
       }
       case "deleteRole": {
         const { roleId } = body;
-        const docRef = spRef.doc("roles");
-        const doc = await docRef.get();
-        const items = (doc.exists ? (doc.data()?.items || []) : [])
-          .filter((r: { id: string }) => r.id !== roleId);
-        await docRef.set({ items });
+        await query("DELETE FROM ui_social_proof_roles WHERE id = $1 AND org_id = $2", [roleId, orgId]);
         return NextResponse.json({ success: true });
       }
 

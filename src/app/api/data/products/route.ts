@@ -1,39 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { getUidAndOrgFromToken, query, toCamelRows } from "@/lib/db";
 
 const BACKEND_BASE_URL = (
   process.env.CALL_SERVER_URL || "http://34.93.142.172:3001/call/conversational"
 ).replace(/\/call\/conversational$/, "");
 
-async function getOrgId(request: NextRequest): Promise<{ orgId: string; uid: string } | NextResponse> {
-  const authHeader = request.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-  const idToken = authHeader.slice(7);
-  const decoded = await getAdminAuth().verifyIdToken(idToken);
-  const db = getAdminDb();
-  const userDoc = await db.collection("users").doc(decoded.uid).get();
-  if (!userDoc.exists) {
-    return NextResponse.json({ error: "User not found" }, { status: 404 });
-  }
-  return { orgId: userDoc.data()!.orgId as string, uid: decoded.uid };
-}
-
 export async function GET(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId } = result;
 
-    const db = getAdminDb();
-    const snap = await db
-      .collection("organizations").doc(orgId)
-      .collection("productSections")
-      .get();
-
-    const sections = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-    return NextResponse.json({ sections });
+    const rows = await query("SELECT * FROM product_sections WHERE org_id = $1", [orgId]);
+    return NextResponse.json({ sections: toCamelRows(rows) });
   } catch (error) {
     console.error("[Products API] GET error:", error);
     return NextResponse.json({ error: "Failed to load" }, { status: 500 });
@@ -42,19 +21,17 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const result = await getOrgId(request);
+    const result = await getUidAndOrgFromToken(request);
     if (result instanceof NextResponse) return result;
     const { orgId } = result;
 
     const body = await request.json();
     const { action } = body;
-    const db = getAdminDb();
-    const orgRef = db.collection("organizations").doc(orgId);
+    const now = new Date().toISOString();
 
     switch (action) {
       case "upload": {
         const { text } = body;
-        // Proxy to backend for AI processing
         const res = await fetch(`${BACKEND_BASE_URL}/products/upload`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -73,44 +50,57 @@ export async function POST(request: NextRequest) {
         const data = await res.json();
         const sections = data.sections || [];
 
-        // Save each section to Firestore
-        const batch = db.batch();
         for (const section of sections) {
           const id = section.id || `sec_${crypto.randomUUID().slice(0, 8)}`;
-          const ref = orgRef.collection("productSections").doc(id);
-          batch.set(ref, {
-            ...section,
-            id,
-            updatedAt: new Date().toISOString(),
-          });
+          await query(
+            `INSERT INTO product_sections (id, org_id, name, content, keywords, created_at, updated_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $6)
+             ON CONFLICT (id) DO UPDATE SET name = $3, content = $4, keywords = $5, updated_at = $6`,
+            [id, orgId, section.name || "", section.content || "", JSON.stringify(section.keywords || []), now]
+          );
         }
-        await batch.commit();
 
-        // Return the saved sections
-        const snap = await orgRef.collection("productSections").get();
-        const savedSections = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-        return NextResponse.json({ success: true, sections: savedSections });
+        const rows = await query("SELECT * FROM product_sections WHERE org_id = $1", [orgId]);
+        return NextResponse.json({ success: true, sections: toCamelRows(rows) });
       }
 
       case "createSection": {
         const { section } = body;
-        const ref = orgRef.collection("productSections").doc(section.id);
-        await ref.set({ ...section, updatedAt: new Date().toISOString() });
+        await query(
+          `INSERT INTO product_sections (id, org_id, name, content, keywords, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $6)`,
+          [section.id, orgId, section.name || "", section.content || "", JSON.stringify(section.keywords || []), now]
+        );
         return NextResponse.json({ success: true });
       }
 
       case "updateSection": {
         const { sectionId, updates } = body;
-        await orgRef.collection("productSections").doc(sectionId).update({
-          ...updates,
-          updatedAt: new Date().toISOString(),
-        });
+        const sets: string[] = [];
+        const vals: unknown[] = [];
+        let idx = 1;
+        const fieldMap: Record<string, string> = { name: "name", content: "content", keywords: "keywords" };
+        for (const [k, v] of Object.entries(updates || {})) {
+          const col = fieldMap[k];
+          if (col) {
+            sets.push(`${col} = $${idx++}`);
+            vals.push(col === "keywords" ? JSON.stringify(v) : v);
+          }
+        }
+        sets.push(`updated_at = $${idx++}`);
+        vals.push(now);
+        vals.push(sectionId);
+        vals.push(orgId);
+        await query(
+          `UPDATE product_sections SET ${sets.join(", ")} WHERE id = $${idx} AND org_id = $${idx + 1}`,
+          vals
+        );
         return NextResponse.json({ success: true });
       }
 
       case "deleteSection": {
         const { sectionId } = body;
-        await orgRef.collection("productSections").doc(sectionId).delete();
+        await query("DELETE FROM product_sections WHERE id = $1 AND org_id = $2", [sectionId, orgId]);
         return NextResponse.json({ success: true });
       }
 
