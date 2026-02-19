@@ -65,6 +65,41 @@ export async function GET(request: NextRequest) {
         const url = `${FWAI_BACKEND_URL}/calls/${uuid}/status`;
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (res.status === 404) {
+            // Session no longer exists — call already ended & cleaned up.
+            // Return a minimal "completed" update so frontend stops polling.
+            pendingUpdates.push({
+              callUuid: uuid,
+              data: {
+                call_uuid: uuid,
+                caller_phone: "",
+                contact_name: "",
+                client_name: "",
+                duration_seconds: 0,
+                timestamp: new Date().toISOString(),
+                questions_completed: 0,
+                total_questions: 0,
+                completion_rate: 0,
+                interest_level: "Unknown",
+                call_summary: "Call ended (no detailed data available)",
+                objections_raised: [],
+                collected_responses: {},
+                question_pairs: [],
+                call_metrics: {
+                  questions_completed: 0,
+                  total_duration_s: 0,
+                  avg_latency_ms: 0,
+                  p90_latency_ms: 0,
+                  min_latency_ms: 0,
+                  max_latency_ms: 0,
+                  total_nudges: 0,
+                },
+                transcript: "",
+              } as CallEndedData,
+              receivedAt: new Date().toISOString(),
+            });
+            return;
+          }
           if (!res.ok) {
             errors.push(`${uuid}: HTTP ${res.status}`);
             return;
