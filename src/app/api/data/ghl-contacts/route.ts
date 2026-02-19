@@ -32,15 +32,45 @@ interface GHLResponse {
   meta: { startAfterId?: string; total?: number };
 }
 
-async function fetchAllGHLContacts(
+async function fetchGHLTags(
   apiKey: string,
   locationId: string
+): Promise<string[]> {
+  console.log("[GHL Tags] Fetching tags for location:", locationId);
+  const res = await fetch(
+    `${GHL_API_BASE}/locations/${locationId}/tags`,
+    {
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        Version: GHL_API_VERSION,
+      },
+    }
+  );
+
+  if (!res.ok) {
+    const errorText = await res.text();
+    console.error(`[GHL Tags] API error: ${res.status} - ${errorText}`);
+    throw new Error(`GHL Tags API error ${res.status}: ${errorText}`);
+  }
+
+  const data = await res.json();
+  const tags: string[] = (data.tags ?? []).map(
+    (t: { name?: string } | string) => (typeof t === "string" ? t : t.name ?? "")
+  ).filter(Boolean);
+  console.log(`[GHL Tags] Found ${tags.length} tags`);
+  return tags;
+}
+
+async function fetchAllGHLContacts(
+  apiKey: string,
+  locationId: string,
+  filterTag?: string
 ): Promise<{ contacts: GHLContact[]; total: number }> {
   const allContacts: GHLContact[] = [];
   let startAfterId: string | undefined;
   let page = 0;
 
-  console.log("[GHL Sync] Starting to fetch contacts from GHL...");
+  console.log(`[GHL Sync] Starting to fetch contacts from GHL...${filterTag ? ` (filtering by tag: "${filterTag}")` : " (all contacts)"}`);
 
   while (true) {
     page++;
@@ -68,8 +98,11 @@ async function fetchAllGHLContacts(
     }
 
     const data: GHLResponse = await res.json();
-    console.log(`[GHL Sync] Page ${page}: got ${data.contacts.length} contacts (total from API: ${data.meta?.total ?? "unknown"})`);
-    allContacts.push(...data.contacts);
+    const pageContacts = filterTag
+      ? data.contacts.filter((c) => c.tags?.includes(filterTag))
+      : data.contacts;
+    console.log(`[GHL Sync] Page ${page}: got ${data.contacts.length} contacts${filterTag ? `, ${pageContacts.length} match tag "${filterTag}"` : ""} (total from API: ${data.meta?.total ?? "unknown"})`);
+    allContacts.push(...pageContacts);
 
     if (
       !data.meta?.startAfterId ||
@@ -90,13 +123,6 @@ export async function POST(request: NextRequest) {
     const { orgId } = await getUidAndOrg(request);
     const db = getAdminDb();
     const body = await request.json();
-
-    if (body.action !== "sync") {
-      return NextResponse.json(
-        { success: false, message: "Unknown action" },
-        { status: 400 }
-      );
-    }
 
     // Read GHL credentials from org settings
     const orgDoc = await db.collection("organizations").doc(orgId).get();
@@ -123,10 +149,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("[GHL Sync] Credentials found. Starting sync for org:", orgId);
+    // Fetch available tags from GHL
+    if (body.action === "fetchTags") {
+      const tags = await fetchGHLTags(ghlApiKey, ghlLocationId);
+      return NextResponse.json({ success: true, tags });
+    }
 
-    // Fetch all contacts from GHL
-    const { contacts } = await fetchAllGHLContacts(ghlApiKey, ghlLocationId);
+    if (body.action !== "sync") {
+      return NextResponse.json(
+        { success: false, message: "Unknown action" },
+        { status: 400 }
+      );
+    }
+
+    const filterTag: string | undefined = body.tag || undefined;
+    console.log(`[GHL Sync] Credentials found. Starting sync for org: ${orgId}${filterTag ? ` (tag: "${filterTag}")` : ""}`);
+
+    // Fetch contacts from GHL (filtered by tag if specified)
+    const { contacts } = await fetchAllGHLContacts(ghlApiKey, ghlLocationId, filterTag);
 
     console.log(`[GHL Sync] Fetched ${contacts.length} contacts from GHL. Now upserting to Firestore...`);
 

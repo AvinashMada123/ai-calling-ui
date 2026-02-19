@@ -1,11 +1,18 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { Upload, Plus, RefreshCw, Settings } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { LeadsToolbar } from "@/components/leads/leads-toolbar";
 import { LeadsTable } from "@/components/leads/leads-table";
 import { LeadsPagination } from "@/components/leads/leads-pagination";
@@ -23,6 +30,9 @@ export default function LeadsPage() {
   const [uploadOpen, setUploadOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [ghlTags, setGhlTags] = useState<string[]>([]);
+  const [selectedGhlTag, setSelectedGhlTag] = useState("all");
+  const [loadingTags, setLoadingTags] = useState(false);
 
   const ghlConfigured = !!(settings.ghlApiKey && settings.ghlLocationId);
   const ghlSyncEnabled = settings.ghlSyncEnabled ?? false;
@@ -30,6 +40,38 @@ export default function LeadsPage() {
   const handleToggleGhlSync = (checked: boolean) => {
     updateSettings({ ghlSyncEnabled: checked });
   };
+
+  // Fetch GHL tags when sync is enabled and configured
+  useEffect(() => {
+    if (!ghlSyncEnabled || !ghlConfigured || !user) return;
+
+    let cancelled = false;
+    const fetchTags = async () => {
+      setLoadingTags(true);
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch("/api/data/ghl-contacts", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ action: "fetchTags" }),
+        });
+        const data = await res.json();
+        if (!cancelled && data.tags) {
+          setGhlTags(data.tags);
+        }
+      } catch (err) {
+        console.error("Failed to fetch GHL tags:", err);
+      } finally {
+        if (!cancelled) setLoadingTags(false);
+      }
+    };
+
+    fetchTags();
+    return () => { cancelled = true; };
+  }, [ghlSyncEnabled, ghlConfigured, user]);
 
   const handleSync = useCallback(async () => {
     if (!user) return;
@@ -49,7 +91,10 @@ export default function LeadsPage() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ action: "sync" }),
+        body: JSON.stringify({
+          action: "sync",
+          ...(selectedGhlTag !== "all" && { tag: selectedGhlTag }),
+        }),
         signal: controller.signal,
       });
 
@@ -90,7 +135,7 @@ export default function LeadsPage() {
     } finally {
       setSyncing(false);
     }
-  }, [user, updateSettings, mergeGhlLeads]);
+  }, [user, updateSettings, mergeGhlLeads, selectedGhlTag]);
 
   const formatLastSync = (dateStr?: string) => {
     if (!dateStr) return null;
@@ -137,6 +182,23 @@ export default function LeadsPage() {
           <div className="flex items-center gap-3">
             {ghlConfigured ? (
               <>
+                <Select
+                  value={selectedGhlTag}
+                  onValueChange={setSelectedGhlTag}
+                  disabled={syncing || loadingTags}
+                >
+                  <SelectTrigger className="w-[180px] h-9">
+                    <SelectValue placeholder={loadingTags ? "Loading tags..." : "Select tag"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Contacts</SelectItem>
+                    {ghlTags.map((tag) => (
+                      <SelectItem key={tag} value={tag}>
+                        {tag}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Button
                   size="sm"
                   variant="outline"
