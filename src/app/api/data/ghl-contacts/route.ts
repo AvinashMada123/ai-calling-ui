@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
 
-// Extend Vercel serverless timeout (Pro: 300s, Hobby: 60s)
-export const maxDuration = 300;
+export const maxDuration = 60;
 
 const GHL_API_BASE = "https://services.leadconnectorhq.com";
 const GHL_API_VERSION = "2021-07-28";
 const GHL_PAGE_LIMIT = 100;
-const FIRESTORE_BATCH_LIMIT = 500;
 
 async function getUidAndOrg(request: NextRequest) {
   const authHeader = request.headers.get("Authorization");
@@ -65,52 +63,6 @@ async function fetchGHLTags(
   return tags;
 }
 
-function buildLead(
-  contact: GHLContact,
-  refId: string,
-  existingDocId: string | undefined,
-  now: string
-) {
-  const contactName =
-    [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Unknown";
-
-  if (existingDocId) {
-    return {
-      isUpdate: true as const,
-      docId: existingDocId,
-      data: {
-        contactName,
-        phoneNumber: contact.phone || "",
-        email: contact.email || undefined,
-        company: contact.companyName || undefined,
-        location: contact.city || undefined,
-        tags: contact.tags || [],
-        updatedAt: now,
-      },
-    };
-  }
-
-  return {
-    isUpdate: false as const,
-    docId: refId,
-    data: {
-      id: refId,
-      contactName,
-      phoneNumber: contact.phone || "",
-      email: contact.email || undefined,
-      company: contact.companyName || undefined,
-      location: contact.city || undefined,
-      tags: contact.tags || [],
-      status: "new",
-      callCount: 0,
-      source: "ghl",
-      ghlContactId: contact.id,
-      createdAt: now,
-      updatedAt: now,
-    },
-  };
-}
-
 export async function POST(request: NextRequest) {
   try {
     const { orgId } = await getUidAndOrg(request);
@@ -131,7 +83,6 @@ export async function POST(request: NextRequest) {
     const ghlLocationId = settings.ghlLocationId;
 
     if (!ghlApiKey || !ghlLocationId) {
-      console.error("[GHL Sync] Missing credentials - apiKey:", !!ghlApiKey, "locationId:", !!ghlLocationId);
       return NextResponse.json(
         {
           success: false,
@@ -154,122 +105,126 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Sync: fetch ONE page of 100 contacts, save, return cursor for next batch
     const filterTag: string | undefined = body.tag || undefined;
-    console.log(`[GHL Sync] Starting sync for org: ${orgId}${filterTag ? ` (tag: "${filterTag}")` : " (all contacts)"}`);
+    const cursor: string | undefined = body.cursor || undefined;
 
-    // Load existing GHL leads index for upsert (do this once upfront)
+    console.log(`[GHL Sync] Fetching batch for org: ${orgId}${filterTag ? ` (tag: "${filterTag}")` : ""}${cursor ? ` (cursor: ${cursor})` : " (first batch)"}`);
+
+    // Fetch one page from GHL
+    const params = new URLSearchParams({
+      locationId: ghlLocationId,
+      limit: String(GHL_PAGE_LIMIT),
+    });
+    if (cursor) {
+      params.set("startAfterId", cursor);
+    }
+
+    const ghlRes = await fetch(`${GHL_API_BASE}/contacts/?${params.toString()}`, {
+      headers: {
+        Authorization: `Bearer ${ghlApiKey}`,
+        Version: GHL_API_VERSION,
+      },
+    });
+
+    if (!ghlRes.ok) {
+      const errorText = await ghlRes.text();
+      console.error(`[GHL Sync] API error: ${ghlRes.status} - ${errorText}`);
+      throw new Error(`GHL API error ${ghlRes.status}: ${errorText}`);
+    }
+
+    const ghlData: GHLResponse = await ghlRes.json();
+    const totalInGHL = ghlData.meta?.total ?? 0;
+
+    // Filter by tag if specified
+    const contacts = filterTag
+      ? ghlData.contacts.filter((c) => c.tags?.includes(filterTag))
+      : ghlData.contacts;
+
+    console.log(`[GHL Sync] Got ${ghlData.contacts.length} contacts from GHL, ${contacts.length} matched${filterTag ? ` tag "${filterTag}"` : ""} (total in GHL: ${totalInGHL})`);
+
+    // Load existing GHL leads for upsert
     const leadsRef = db.collection("organizations").doc(orgId).collection("leads");
-    const existingSnap = await leadsRef.where("source", "==", "ghl").get();
     const existingByGhlId = new Map<string, string>();
-    for (const doc of existingSnap.docs) {
-      const data = doc.data();
-      if (data.ghlContactId) {
-        existingByGhlId.set(data.ghlContactId, doc.id);
+
+    if (contacts.length > 0) {
+      const ghlIds = contacts.map((c) => c.id);
+      // Query in chunks of 30 (Firestore 'in' limit)
+      for (let i = 0; i < ghlIds.length; i += 30) {
+        const chunk = ghlIds.slice(i, i + 30);
+        const snap = await leadsRef.where("ghlContactId", "in", chunk).get();
+        for (const doc of snap.docs) {
+          const data = doc.data();
+          if (data.ghlContactId) {
+            existingByGhlId.set(data.ghlContactId, doc.id);
+          }
+        }
       }
     }
-    console.log(`[GHL Sync] Found ${existingByGhlId.size} existing GHL leads in Firestore`);
 
-    // Process page-by-page: fetch a page from GHL → upsert to Firestore → next page
+    // Upsert contacts
     const now = new Date().toISOString();
-    let startAfterId: string | undefined;
-    let page = 0;
     let synced = 0;
-    let totalFetched = 0;
-    let pendingWrites: { isUpdate: boolean; docId: string; data: Record<string, unknown> }[] = [];
 
-    const flushBatch = async () => {
-      if (pendingWrites.length === 0) return;
+    if (contacts.length > 0) {
       const batch = db.batch();
-      for (const write of pendingWrites) {
-        const ref = leadsRef.doc(write.docId);
-        if (write.isUpdate) {
-          batch.update(ref, write.data);
+      for (const contact of contacts) {
+        const existingDocId = existingByGhlId.get(contact.id);
+        const contactName =
+          [contact.firstName, contact.lastName].filter(Boolean).join(" ") || "Unknown";
+
+        if (existingDocId) {
+          batch.update(leadsRef.doc(existingDocId), {
+            contactName,
+            phoneNumber: contact.phone || "",
+            email: contact.email || undefined,
+            company: contact.companyName || undefined,
+            location: contact.city || undefined,
+            tags: contact.tags || [],
+            updatedAt: now,
+          });
         } else {
-          batch.set(ref, write.data);
+          const ref = leadsRef.doc();
+          batch.set(ref, {
+            id: ref.id,
+            contactName,
+            phoneNumber: contact.phone || "",
+            email: contact.email || undefined,
+            company: contact.companyName || undefined,
+            location: contact.city || undefined,
+            tags: contact.tags || [],
+            status: "new",
+            callCount: 0,
+            source: "ghl",
+            ghlContactId: contact.id,
+            createdAt: now,
+            updatedAt: now,
+          });
         }
+        synced++;
       }
       await batch.commit();
-      console.log(`[GHL Sync] Flushed ${pendingWrites.length} writes to Firestore (total synced: ${synced})`);
-      pendingWrites = [];
-    };
-
-    while (true) {
-      page++;
-      const params = new URLSearchParams({
-        locationId: ghlLocationId,
-        limit: String(GHL_PAGE_LIMIT),
-      });
-      if (startAfterId) {
-        params.set("startAfterId", startAfterId);
-      }
-
-      console.log(`[GHL Sync] Fetching page ${page}...`);
-
-      const res = await fetch(`${GHL_API_BASE}/contacts/?${params.toString()}`, {
-        headers: {
-          Authorization: `Bearer ${ghlApiKey}`,
-          Version: GHL_API_VERSION,
-        },
-      });
-
-      if (!res.ok) {
-        // Flush whatever we have so far before failing
-        await flushBatch();
-        const errorText = await res.text();
-        console.error(`[GHL Sync] API error on page ${page}: ${res.status} - ${errorText}`);
-        throw new Error(`GHL API error ${res.status}: ${errorText}`);
-      }
-
-      const data: GHLResponse = await res.json();
-      totalFetched += data.contacts.length;
-
-      // Filter by tag if specified
-      const pageContacts = filterTag
-        ? data.contacts.filter((c) => c.tags?.includes(filterTag))
-        : data.contacts;
-
-      console.log(`[GHL Sync] Page ${page}: ${data.contacts.length} contacts fetched, ${pageContacts.length} matched${filterTag ? ` tag "${filterTag}"` : ""} (total API: ${data.meta?.total ?? "?"})`);
-
-      // Build leads and add to pending writes
-      for (const contact of pageContacts) {
-        const existingDocId = existingByGhlId.get(contact.id);
-        const refId = existingDocId || leadsRef.doc().id;
-        const lead = buildLead(contact, refId, existingDocId, now);
-        pendingWrites.push(lead);
-        synced++;
-
-        // Flush when we hit the Firestore batch limit
-        if (pendingWrites.length >= FIRESTORE_BATCH_LIMIT) {
-          await flushBatch();
-        }
-      }
-
-      // Check if there are more pages
-      if (!data.meta?.startAfterId || data.contacts.length < GHL_PAGE_LIMIT) {
-        break;
-      }
-
-      startAfterId = data.meta.startAfterId;
+      console.log(`[GHL Sync] Saved ${synced} leads to Firestore`);
     }
 
-    // Flush remaining writes
-    await flushBatch();
+    // Update last sync time
+    await db.collection("organizations").doc(orgId).update({
+      "settings.ghlLastSyncAt": now,
+      updatedAt: now,
+    });
 
-    console.log(`[GHL Sync] Complete. Synced ${synced} leads from ${totalFetched} total contacts (${page} pages).`);
+    // Determine if there are more pages
+    const hasMore = !!(ghlData.meta?.startAfterId && ghlData.contacts.length >= GHL_PAGE_LIMIT);
+    const nextCursor = hasMore ? ghlData.meta!.startAfterId : null;
 
-    // Update last sync time in org settings
-    await db
-      .collection("organizations")
-      .doc(orgId)
-      .update({
-        "settings.ghlLastSyncAt": now,
-        updatedAt: now,
-      });
+    console.log(`[GHL Sync] Batch done. Synced: ${synced}, hasMore: ${hasMore}`);
 
     return NextResponse.json({
       success: true,
       synced,
-      total: totalFetched,
+      totalInGHL,
+      hasMore,
+      nextCursor,
       ghlLastSyncAt: now,
     });
   } catch (error) {

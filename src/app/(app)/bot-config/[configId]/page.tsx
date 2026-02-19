@@ -58,6 +58,7 @@ export default function BotConfigEditorPage() {
   const [config, setConfig] = useState<BotConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const [activeTab, setActiveTab] = useState<TabId>("prompt");
 
   // Local editable state
@@ -117,6 +118,33 @@ export default function BotConfigEditorPage() {
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, configId, initialData]);
+
+  async function handleSeedDemoData() {
+    if (!user) return;
+    try {
+      setSeeding(true);
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/data/seed-demo", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(
+          `Seeded demo data: ${data.seeded.personas} personas, ${data.seeded.productSections} products, ${data.seeded.companies + data.seeded.cities + data.seeded.roles} social proof entries. Refresh tabs to see data.`
+        );
+      } else {
+        toast.error("Failed to seed demo data");
+      }
+    } catch {
+      toast.error("Failed to seed demo data");
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   async function handleSave() {
     if (!user || !config) return;
@@ -243,10 +271,16 @@ export default function BotConfigEditorPage() {
             </p>
           </div>
         </div>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          Save Changes
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleSeedDemoData} disabled={seeding}>
+            {seeding ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
+            {seeding ? "Seeding..." : "Seed Demo Data"}
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            Save Changes
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}

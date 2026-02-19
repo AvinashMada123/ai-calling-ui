@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Upload, Plus, RefreshCw, Settings } from "lucide-react";
+import { Upload, Plus, RefreshCw, Settings, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -33,6 +33,9 @@ export default function LeadsPage() {
   const [ghlTags, setGhlTags] = useState<string[]>([]);
   const [selectedGhlTag, setSelectedGhlTag] = useState("all");
   const [loadingTags, setLoadingTags] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [totalSynced, setTotalSynced] = useState(0);
+  const [totalInGHL, setTotalInGHL] = useState<number | null>(null);
 
   const ghlConfigured = !!(settings.ghlApiKey && settings.ghlLocationId);
   const ghlSyncEnabled = settings.ghlSyncEnabled ?? false;
@@ -40,6 +43,13 @@ export default function LeadsPage() {
   const handleToggleGhlSync = (checked: boolean) => {
     updateSettings({ ghlSyncEnabled: checked });
   };
+
+  // Reset cursor when tag changes
+  useEffect(() => {
+    setNextCursor(null);
+    setTotalSynced(0);
+    setTotalInGHL(null);
+  }, [selectedGhlTag]);
 
   // Fetch GHL tags when sync is enabled and configured
   useEffect(() => {
@@ -73,17 +83,12 @@ export default function LeadsPage() {
     return () => { cancelled = true; };
   }, [ghlSyncEnabled, ghlConfigured, user]);
 
-  const handleSync = useCallback(async () => {
+  const handleSync = useCallback(async (cursor?: string | null) => {
     if (!user) return;
     setSyncing(true);
-    const toastId = toast.loading("Connecting to GoHighLevel...");
+    const toastId = toast.loading(cursor ? "Fetching next 100 contacts..." : "Fetching contacts from GoHighLevel...");
     try {
       const token = await user.getIdToken();
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 300000); // 5 min timeout (matches server maxDuration)
-
-      toast.loading("Fetching contacts from GoHighLevel... This may take a minute.", { id: toastId });
 
       const res = await fetch("/api/data/ghl-contacts", {
         method: "POST",
@@ -94,11 +99,9 @@ export default function LeadsPage() {
         body: JSON.stringify({
           action: "sync",
           ...(selectedGhlTag !== "all" && { tag: selectedGhlTag }),
+          ...(cursor && { cursor }),
         }),
-        signal: controller.signal,
       });
-
-      clearTimeout(timeout);
 
       const data = await res.json();
 
@@ -107,12 +110,13 @@ export default function LeadsPage() {
         return;
       }
 
-      // Update last sync time in settings
+      // Update state
       updateSettings({ ghlLastSyncAt: data.ghlLastSyncAt });
+      setNextCursor(data.nextCursor || null);
+      setTotalSynced((prev) => prev + data.synced);
+      if (data.totalInGHL) setTotalInGHL(data.totalInGHL);
 
-      toast.loading("Refreshing leads list...", { id: toastId });
-
-      // Reload leads from server to get the synced data
+      // Reload leads from server
       const leadsRes = await fetch("/api/data/leads", {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -125,13 +129,14 @@ export default function LeadsPage() {
         );
       }
 
-      toast.success(`Synced ${data.synced} contacts from GoHighLevel`, { id: toastId });
+      if (data.hasMore) {
+        toast.success(`Synced ${data.synced} contacts. More available — click "Fetch Next 100" to continue.`, { id: toastId });
+      } else {
+        toast.success(`Synced ${data.synced} contacts. All done!`, { id: toastId });
+      }
     } catch (error) {
       console.error("GHL sync error:", error);
-      const message = error instanceof Error && error.name === "AbortError"
-        ? "Sync timed out — too many contacts. Check server logs."
-        : "Failed to sync GHL contacts";
-      toast.error(message, { id: toastId });
+      toast.error("Failed to sync GHL contacts", { id: toastId });
     } finally {
       setSyncing(false);
     }
@@ -166,22 +171,30 @@ export default function LeadsPage() {
       </div>
 
       {/* GHL Sync Section */}
-      <div className="flex items-center gap-4 rounded-lg border p-4">
-        <div className="flex items-center gap-2">
-          <Switch
-            id="ghl-sync"
-            checked={ghlSyncEnabled}
-            onCheckedChange={handleToggleGhlSync}
-          />
-          <Label htmlFor="ghl-sync" className="font-medium">
-            Sync from GoHighLevel
-          </Label>
+      <div className="rounded-lg border p-4 space-y-3">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <Switch
+              id="ghl-sync"
+              checked={ghlSyncEnabled}
+              onCheckedChange={handleToggleGhlSync}
+            />
+            <Label htmlFor="ghl-sync" className="font-medium">
+              Sync from GoHighLevel
+            </Label>
+          </div>
+
+          {ghlSyncEnabled && ghlConfigured && settings.ghlLastSyncAt && (
+            <span className="text-sm text-muted-foreground">
+              Last synced: {formatLastSync(settings.ghlLastSyncAt)}
+            </span>
+          )}
         </div>
 
         {ghlSyncEnabled && (
-          <div className="flex items-center gap-3">
+          <>
             {ghlConfigured ? (
-              <>
+              <div className="flex items-center gap-3 flex-wrap">
                 <Select
                   value={selectedGhlTag}
                   onValueChange={setSelectedGhlTag}
@@ -199,23 +212,40 @@ export default function LeadsPage() {
                     ))}
                   </SelectContent>
                 </Select>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={handleSync}
-                  disabled={syncing}
-                >
-                  <RefreshCw
-                    className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`}
-                  />
-                  {syncing ? "Syncing..." : "Sync Now"}
-                </Button>
-                {settings.ghlLastSyncAt && (
+
+                {!nextCursor ? (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSync(null)}
+                    disabled={syncing}
+                  >
+                    <RefreshCw
+                      className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                    />
+                    {syncing ? "Syncing..." : "Fetch 100 Contacts"}
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleSync(nextCursor)}
+                    disabled={syncing}
+                  >
+                    <ChevronRight
+                      className={`mr-2 h-4 w-4 ${syncing ? "animate-spin" : ""}`}
+                    />
+                    {syncing ? "Syncing..." : "Fetch Next 100"}
+                  </Button>
+                )}
+
+                {totalSynced > 0 && (
                   <span className="text-sm text-muted-foreground">
-                    Last synced: {formatLastSync(settings.ghlLastSyncAt)}
+                    {totalSynced} synced{totalInGHL ? ` / ${totalInGHL} total in GHL` : ""}
+                    {nextCursor ? " — more available" : " — all fetched"}
                   </span>
                 )}
-              </>
+              </div>
             ) : (
               <span className="text-sm text-muted-foreground">
                 Configure GHL API key in{" "}
@@ -228,7 +258,7 @@ export default function LeadsPage() {
                 </Link>
               </span>
             )}
-          </div>
+          </>
         )}
       </div>
 
