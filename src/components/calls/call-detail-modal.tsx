@@ -216,21 +216,16 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                                 <span className="text-xs text-muted-foreground">None</span>
                               )}
                             </div>
-                            {/* Social Proof */}
-                            <div className="rounded-md border bg-background/60 p-3">
-                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Social Proof</p>
-                              {data.social_proof_used ? (
+                            {/* Social Proof — only show when used */}
+                            {data.social_proof_used && (
+                              <div className="rounded-md border bg-background/60 p-3">
+                                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Social Proof</p>
                                 <div className="flex items-center gap-1">
                                   <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
                                   <span className="text-xs text-emerald-400">Used</span>
                                 </div>
-                              ) : (
-                                <div className="flex items-center gap-1">
-                                  <XCircle className="h-3.5 w-3.5 text-muted-foreground/50" />
-                                  <span className="text-xs text-muted-foreground">Not used</span>
-                                </div>
-                              )}
-                            </div>
+                              </div>
+                            )}
                           </div>
                           {data.triggered_situations && data.triggered_situations.length > 0 && (
                             <div>
@@ -555,22 +550,15 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                         </div>
                       )}
 
-                      <div>
-                        <h4 className="text-sm font-semibold mb-2">Social Proof</h4>
-                        <div className="flex items-center gap-2 text-sm">
-                          {data.social_proof_used ? (
-                            <>
-                              <CheckCircle className="h-4 w-4 text-emerald-400" />
-                              <span className="text-muted-foreground">Social proof was used during this call</span>
-                            </>
-                          ) : (
-                            <>
-                              <XCircle className="h-4 w-4 text-muted-foreground" />
-                              <span className="text-muted-foreground">Social proof was not used</span>
-                            </>
-                          )}
+                      {data.social_proof_used && (
+                        <div>
+                          <h4 className="text-sm font-semibold mb-2">Social Proof</h4>
+                          <div className="flex items-center gap-2 text-sm">
+                            <CheckCircle className="h-4 w-4 text-emerald-400" />
+                            <span className="text-muted-foreground">Social proof was used during this call</span>
+                          </div>
                         </div>
-                      </div>
+                      )}
                     </div>
                   )}
                 </motion.div>
