@@ -178,7 +178,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                       <div>
                         <h4 className="text-sm font-semibold mb-2">Call Summary</h4>
                         <p className="text-sm text-muted-foreground leading-relaxed">
-                          {data.call_summary}
+                          {data.call_summary || "No summary available for this call."}
                         </p>
                       </div>
 
@@ -506,8 +506,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                   {activeTab === "qualification" && !data.qualification && (
                     <div className="text-center py-8 text-sm text-muted-foreground">
                       <Target className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                      <p>No qualification data available.</p>
-                      <p className="mt-1">Set GEMINI_API_KEY in .env.local to enable AI qualification.</p>
+                      <p>No qualification data available for this call.</p>
                     </div>
                   )}
 
