@@ -79,16 +79,10 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
   if (!call) return null;
 
   const data = call.endedData;
-  const hasIntelligence = data && (
-    data.triggered_persona ||
-    (data.triggered_situations && data.triggered_situations.length > 0) ||
-    (data.triggered_product_sections && data.triggered_product_sections.length > 0) ||
-    data.social_proof_used
-  );
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "summary", label: "Summary", icon: FileText },
     { id: "qualification", label: "Qualification", icon: Target },
-    ...(hasIntelligence ? [{ id: "intelligence" as Tab, label: "Intelligence", icon: Brain }] : []),
+    { id: "intelligence", label: "Intelligence", icon: Brain },
     { id: "transcript", label: "Transcript", icon: MessageSquare },
     { id: "qa", label: "Q&A", icon: BarChart3 },
     { id: "metrics", label: "Metrics", icon: Gauge },
@@ -187,6 +181,71 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                           {data.call_summary}
                         </p>
                       </div>
+
+                      {/* AI Intelligence highlights */}
+                      {(data.triggered_persona || (data.triggered_product_sections && data.triggered_product_sections.length > 0) || data.social_proof_used) && (
+                        <div className="rounded-lg border border-violet-500/20 bg-violet-500/5 p-4 space-y-3">
+                          <h4 className="text-sm font-semibold flex items-center gap-1.5">
+                            <Brain className="h-3.5 w-3.5 text-violet-400" />
+                            AI Intelligence
+                          </h4>
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            {/* Persona */}
+                            <div className="rounded-md border bg-background/60 p-3">
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Persona</p>
+                              {data.triggered_persona ? (
+                                <Badge className="bg-purple-500/15 text-purple-400 border-purple-500/20 text-xs">
+                                  {data.triggered_persona.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                </Badge>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">Not detected</span>
+                              )}
+                            </div>
+                            {/* Product Sections */}
+                            <div className="rounded-md border bg-background/60 p-3">
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Products Triggered</p>
+                              {data.triggered_product_sections && data.triggered_product_sections.length > 0 ? (
+                                <div className="flex flex-wrap gap-1">
+                                  {data.triggered_product_sections.map((s, i) => (
+                                    <Badge key={i} variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                                      {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">None</span>
+                              )}
+                            </div>
+                            {/* Social Proof */}
+                            <div className="rounded-md border bg-background/60 p-3">
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Social Proof</p>
+                              {data.social_proof_used ? (
+                                <div className="flex items-center gap-1">
+                                  <CheckCircle className="h-3.5 w-3.5 text-emerald-400" />
+                                  <span className="text-xs text-emerald-400">Used</span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1">
+                                  <XCircle className="h-3.5 w-3.5 text-muted-foreground/50" />
+                                  <span className="text-xs text-muted-foreground">Not used</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {data.triggered_situations && data.triggered_situations.length > 0 && (
+                            <div>
+                              <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Situations Detected</p>
+                              <div className="flex flex-wrap gap-1.5">
+                                {data.triggered_situations.map((s, i) => (
+                                  <Badge key={i} variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">
+                                    {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                  </Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {data.objections_raised.length > 0 && (
                         <div>
@@ -411,7 +470,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                     </div>
                   )}
 
-                  {activeTab === "intelligence" && hasIntelligence && (
+                  {activeTab === "intelligence" && (
                     <div className="space-y-5">
                       <h4 className="text-sm font-semibold mb-2">AI Intelligence Data</h4>
 
