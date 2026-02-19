@@ -28,8 +28,8 @@ export async function POST(request: NextRequest) {
       case "create": {
         const { config } = body;
         await query(
-          `INSERT INTO bot_configs (id, org_id, name, is_active, prompt, questions, objections, objection_keywords, context_variables, qualification_criteria, persona_engine_enabled, product_intelligence_enabled, social_proof_enabled, pre_research_enabled, memory_recall_enabled, created_by, created_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $17)`,
+          `INSERT INTO bot_configs (id, org_id, name, is_active, prompt, questions, objections, objection_keywords, context_variables, qualification_criteria, persona_engine_enabled, product_intelligence_enabled, social_proof_enabled, pre_research_enabled, memory_recall_enabled, voice, created_by, created_at, updated_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $18)`,
           [
             config.id,
             orgId,
@@ -46,6 +46,7 @@ export async function POST(request: NextRequest) {
             config.socialProofEnabled ?? false,
             config.preResearchEnabled ?? false,
             config.memoryRecallEnabled ?? false,
+            config.voice || "",
             config.createdBy || null,
             config.createdAt || new Date().toISOString(),
           ]
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
           socialProofEnabled: "social_proof_enabled",
           preResearchEnabled: "pre_research_enabled",
           memoryRecallEnabled: "memory_recall_enabled",
+          voice: "voice",
         };
 
         const jsonCols = new Set([

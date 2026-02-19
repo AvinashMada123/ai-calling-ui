@@ -68,6 +68,7 @@ export default function BotConfigEditorPage() {
   const [socialProofEnabled, setSocialProofEnabled] = useState(false);
   const [preResearchEnabled, setPreResearchEnabled] = useState(false);
   const [memoryRecallEnabled, setMemoryRecallEnabled] = useState(false);
+  const [voice, setVoice] = useState("");
   const hasLoadedRef = useRef(false);
 
   const populateConfig = useCallback((found: BotConfig) => {
@@ -80,6 +81,7 @@ export default function BotConfigEditorPage() {
     setSocialProofEnabled(found.socialProofEnabled || false);
     setPreResearchEnabled(found.preResearchEnabled || false);
     setMemoryRecallEnabled(found.memoryRecallEnabled || false);
+    setVoice(found.voice || "");
     setLoading(false);
     hasLoadedRef.current = true;
   }, []);
@@ -161,6 +163,7 @@ export default function BotConfigEditorPage() {
           socialProofEnabled,
           preResearchEnabled,
           memoryRecallEnabled,
+          voice,
         },
       });
       toast.success("Configuration saved successfully");
@@ -293,6 +296,8 @@ export default function BotConfigEditorPage() {
             onPreResearchToggle={setPreResearchEnabled}
             memoryRecallEnabled={memoryRecallEnabled}
             onMemoryRecallToggle={setMemoryRecallEnabled}
+            voice={voice}
+            onVoiceChange={setVoice}
           />
         )}
       </motion.div>
@@ -401,51 +406,142 @@ function ContextTab({
 }
 
 /* ========== Additional Options Tab ========== */
+
+const VOICE_CHOICES = [
+  {
+    value: "Puck",
+    label: "Puck",
+    gender: "Male",
+    description: "Natural male voice, conversational tone",
+  },
+  {
+    value: "Kore",
+    label: "Kore",
+    gender: "Female",
+    description: "Natural female voice, warm and professional",
+  },
+] as const;
+
 function AdditionalOptionsTab({
   preResearchEnabled,
   onPreResearchToggle,
   memoryRecallEnabled,
   onMemoryRecallToggle,
+  voice,
+  onVoiceChange,
 }: {
   preResearchEnabled: boolean;
   onPreResearchToggle: (v: boolean) => void;
   memoryRecallEnabled: boolean;
   onMemoryRecallToggle: (v: boolean) => void;
+  voice: string;
+  onVoiceChange: (v: string) => void;
 }) {
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Additional Options</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          Enable or disable advanced bot capabilities for this configuration.
-        </p>
-      </CardHeader>
-      <CardContent className="space-y-6">
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label className="text-sm font-medium">Pre-Research</Label>
-            <p className="text-sm text-muted-foreground">
-              Bot researches lead data (company, industry) before a call to personalize the conversation
-            </p>
+    <div className="space-y-6">
+      {/* Voice Selection */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Voice</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Choose the voice for this bot. This determines the AI speaking voice during calls.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 gap-4">
+            {VOICE_CHOICES.map((v) => {
+              const selected = voice === v.value;
+              return (
+                <button
+                  key={v.value}
+                  type="button"
+                  onClick={() => onVoiceChange(v.value)}
+                  className={`relative flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
+                    selected
+                      ? "border-violet-500 bg-violet-500/10 shadow-sm"
+                      : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
+                  }`}
+                >
+                  {/* Gender Icon */}
+                  <div className={`flex size-14 items-center justify-center rounded-full ${
+                    v.gender === "Male"
+                      ? "bg-blue-500/15 text-blue-500"
+                      : "bg-pink-500/15 text-pink-500"
+                  }`}>
+                    {v.gender === "Male" ? (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-7">
+                        <circle cx="10" cy="14" r="5" />
+                        <path d="M19 5l-5.4 5.4" />
+                        <path d="M15 5h4v4" />
+                      </svg>
+                    ) : (
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-7">
+                        <circle cx="12" cy="8" r="5" />
+                        <path d="M12 13v8" />
+                        <path d="M9 18h6" />
+                      </svg>
+                    )}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-sm font-semibold">{v.label}</p>
+                    <p className="text-xs text-muted-foreground">{v.gender}</p>
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center">{v.description}</p>
+                  {/* Selected indicator */}
+                  {selected && (
+                    <div className="absolute top-2 right-2 size-5 rounded-full bg-violet-500 flex items-center justify-center">
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="size-3">
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
           </div>
-          <Switch
-            checked={preResearchEnabled}
-            onCheckedChange={onPreResearchToggle}
-          />
-        </div>
-        <div className="flex items-center justify-between rounded-lg border p-4">
-          <div className="space-y-0.5">
-            <Label className="text-sm font-medium">Memory Recall</Label>
-            <p className="text-sm text-muted-foreground">
-              Bot remembers past conversations with a lead across calls
+          {!voice && (
+            <p className="mt-3 text-xs text-muted-foreground">
+              No voice selected. The bot will auto-detect voice based on the agent name in your prompt.
             </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Other Options */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Advanced Features</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Enable or disable advanced bot capabilities for this configuration.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">Pre-Research</Label>
+              <p className="text-sm text-muted-foreground">
+                Bot researches lead data (company, industry) before a call to personalize the conversation
+              </p>
+            </div>
+            <Switch
+              checked={preResearchEnabled}
+              onCheckedChange={onPreResearchToggle}
+            />
           </div>
-          <Switch
-            checked={memoryRecallEnabled}
-            onCheckedChange={onMemoryRecallToggle}
-          />
-        </div>
-      </CardContent>
-    </Card>
+          <div className="flex items-center justify-between rounded-lg border p-4">
+            <div className="space-y-0.5">
+              <Label className="text-sm font-medium">Memory Recall</Label>
+              <p className="text-sm text-muted-foreground">
+                Bot remembers past conversations with a lead across calls
+              </p>
+            </div>
+            <Switch
+              checked={memoryRecallEnabled}
+              onCheckedChange={onMemoryRecallToggle}
+            />
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }

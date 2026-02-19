@@ -39,6 +39,7 @@ export interface BotConfig {
   socialProofEnabled?: boolean;
   preResearchEnabled?: boolean;
   memoryRecallEnabled?: boolean;
+  voice?: string;
   createdAt: string;
   updatedAt: string;
   createdBy: string;
