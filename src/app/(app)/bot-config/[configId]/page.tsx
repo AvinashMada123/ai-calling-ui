@@ -264,6 +264,8 @@ export default function BotConfigEditorPage() {
           <ContextTab
             contextVariables={contextVariables}
             onContextChange={setContextVariables}
+            voice={voice}
+            onVoiceChange={setVoice}
           />
         )}
         {activeTab === "persona" && user && (
@@ -296,8 +298,6 @@ export default function BotConfigEditorPage() {
             onPreResearchToggle={setPreResearchEnabled}
             memoryRecallEnabled={memoryRecallEnabled}
             onMemoryRecallToggle={setMemoryRecallEnabled}
-            voice={voice}
-            onVoiceChange={setVoice}
           />
         )}
       </motion.div>
@@ -356,12 +356,23 @@ function PromptTab({
 }
 
 /* ========== Context Tab ========== */
+
+const VOICE_OPTIONS = [
+  { value: "", label: "Auto-detect from prompt" },
+  { value: "Puck", label: "Puck (Male)" },
+  { value: "Kore", label: "Kore (Female)" },
+];
+
 function ContextTab({
   contextVariables,
   onContextChange,
+  voice,
+  onVoiceChange,
 }: {
   contextVariables: BotContextVariables;
   onContextChange: (v: BotContextVariables) => void;
+  voice: string;
+  onVoiceChange: (v: string) => void;
 }) {
   const fields: { key: keyof BotContextVariables; label: string; placeholder: string; variable: string }[] = [
     { key: "agentName", label: "Agent Name", placeholder: "e.g. Priya", variable: "{agent_name}" },
@@ -372,142 +383,81 @@ function ContextTab({
   ];
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Context Variables</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          These values replace the {"{variable}"} placeholders in your prompt and questions.
-          When set here, callers won&apos;t need to fill them in the call form.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {fields.map((f) => (
-            <div key={f.key} className="space-y-1.5">
-              <Label className="text-sm">
-                {f.label}
-                <Badge variant="secondary" className="ml-2 font-mono text-xs">
-                  {f.variable}
-                </Badge>
-              </Label>
-              <Input
-                value={contextVariables[f.key] || ""}
-                onChange={(e) =>
-                  onContextChange({ ...contextVariables, [f.key]: e.target.value })
-                }
-                placeholder={f.placeholder}
-              />
-            </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+    <div className="space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle>Context Variables</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            These values replace the {"{variable}"} placeholders in your prompt and questions.
+            When set here, callers won&apos;t need to fill them in the call form.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {fields.map((f) => (
+              <div key={f.key} className="space-y-1.5">
+                <Label className="text-sm">
+                  {f.label}
+                  <Badge variant="secondary" className="ml-2 font-mono text-xs">
+                    {f.variable}
+                  </Badge>
+                </Label>
+                <Input
+                  value={contextVariables[f.key] || ""}
+                  onChange={(e) =>
+                    onContextChange({ ...contextVariables, [f.key]: e.target.value })
+                  }
+                  placeholder={f.placeholder}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Voice</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Choose the speaking voice for calls made with this bot configuration.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-1.5">
+            <Label className="text-sm">Voice</Label>
+            <select
+              value={voice}
+              onChange={(e) => onVoiceChange(e.target.value)}
+              className="flex h-10 w-full max-w-xs rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+            >
+              {VOICE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
   );
 }
 
 /* ========== Additional Options Tab ========== */
-
-const VOICE_CHOICES = [
-  {
-    value: "Puck",
-    label: "Puck",
-    gender: "Male",
-    description: "Natural male voice, conversational tone",
-  },
-  {
-    value: "Kore",
-    label: "Kore",
-    gender: "Female",
-    description: "Natural female voice, warm and professional",
-  },
-] as const;
 
 function AdditionalOptionsTab({
   preResearchEnabled,
   onPreResearchToggle,
   memoryRecallEnabled,
   onMemoryRecallToggle,
-  voice,
-  onVoiceChange,
 }: {
   preResearchEnabled: boolean;
   onPreResearchToggle: (v: boolean) => void;
   memoryRecallEnabled: boolean;
   onMemoryRecallToggle: (v: boolean) => void;
-  voice: string;
-  onVoiceChange: (v: string) => void;
 }) {
   return (
     <div className="space-y-6">
-      {/* Voice Selection */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Voice</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Choose the voice for this bot. This determines the AI speaking voice during calls.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 gap-4">
-            {VOICE_CHOICES.map((v) => {
-              const selected = voice === v.value;
-              return (
-                <button
-                  key={v.value}
-                  type="button"
-                  onClick={() => onVoiceChange(v.value)}
-                  className={`relative flex flex-col items-center gap-3 rounded-xl border-2 p-6 transition-all ${
-                    selected
-                      ? "border-violet-500 bg-violet-500/10 shadow-sm"
-                      : "border-muted hover:border-muted-foreground/30 hover:bg-muted/50"
-                  }`}
-                >
-                  {/* Gender Icon */}
-                  <div className={`flex size-14 items-center justify-center rounded-full ${
-                    v.gender === "Male"
-                      ? "bg-blue-500/15 text-blue-500"
-                      : "bg-pink-500/15 text-pink-500"
-                  }`}>
-                    {v.gender === "Male" ? (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-7">
-                        <circle cx="10" cy="14" r="5" />
-                        <path d="M19 5l-5.4 5.4" />
-                        <path d="M15 5h4v4" />
-                      </svg>
-                    ) : (
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="size-7">
-                        <circle cx="12" cy="8" r="5" />
-                        <path d="M12 13v8" />
-                        <path d="M9 18h6" />
-                      </svg>
-                    )}
-                  </div>
-                  <div className="text-center">
-                    <p className="text-sm font-semibold">{v.label}</p>
-                    <p className="text-xs text-muted-foreground">{v.gender}</p>
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center">{v.description}</p>
-                  {/* Selected indicator */}
-                  {selected && (
-                    <div className="absolute top-2 right-2 size-5 rounded-full bg-violet-500 flex items-center justify-center">
-                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="size-3">
-                        <polyline points="20 6 9 17 4 12" />
-                      </svg>
-                    </div>
-                  )}
-                </button>
-              );
-            })}
-          </div>
-          {!voice && (
-            <p className="mt-3 text-xs text-muted-foreground">
-              No voice selected. The bot will auto-detect voice based on the agent name in your prompt.
-            </p>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Other Options */}
       <Card>
         <CardHeader>
           <CardTitle>Advanced Features</CardTitle>

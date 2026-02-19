@@ -283,11 +283,57 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                   {activeTab === "transcript" && (
                     <div className="space-y-3">
                       <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
-                      <div className="rounded-lg border bg-muted/20 p-4">
-                        <pre className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed font-sans">
-                          {data.transcript}
-                        </pre>
-                      </div>
+                      {data.transcript_entries && data.transcript_entries.length > 0 ? (
+                        <div className="space-y-3">
+                          {data.transcript_entries.map((entry, i) => {
+                            const isAgent = entry.role === "agent" || entry.role === "model" || entry.role === "assistant";
+                            return (
+                              <div key={i} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
+                                <div className={`max-w-[80%] rounded-lg p-3 ${
+                                  isAgent
+                                    ? "bg-primary/10 border border-primary/20"
+                                    : "bg-muted/50 border border-border"
+                                }`}>
+                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                                    {isAgent ? "Agent" : "Customer"}
+                                  </p>
+                                  <p className="text-sm leading-relaxed">{entry.text}</p>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : data.transcript ? (
+                        <div className="space-y-3">
+                          {data.transcript.split("\n").filter(Boolean).map((line, i) => {
+                            const agentMatch = line.match(/^(Agent|Bot|AI|Model|Assistant)\s*:/i);
+                            const userMatch = line.match(/^(User|Customer|Caller|Human)\s*:/i);
+                            if (agentMatch || userMatch) {
+                              const isAgent = !!agentMatch;
+                              const text = line.replace(/^[^:]+:\s*/, "");
+                              return (
+                                <div key={i} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
+                                  <div className={`max-w-[80%] rounded-lg p-3 ${
+                                    isAgent
+                                      ? "bg-primary/10 border border-primary/20"
+                                      : "bg-muted/50 border border-border"
+                                  }`}>
+                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
+                                      {isAgent ? "Agent" : "Customer"}
+                                    </p>
+                                    <p className="text-sm leading-relaxed">{text}</p>
+                                  </div>
+                                </div>
+                              );
+                            }
+                            return (
+                              <p key={i} className="text-sm text-muted-foreground leading-relaxed px-2">{line}</p>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground">No transcript available.</p>
+                      )}
                     </div>
                   )}
 
