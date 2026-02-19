@@ -12,6 +12,8 @@ const POLL_INTERVAL_MS = 5000;
 export function useCalls() {
   const { state, dispatch } = useCallsContext();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Track which call UUIDs have already shown a toast — prevents duplicate notifications
+  const notifiedRef = useRef<Set<string>>(new Set());
 
   const hasActiveCalls = useMemo(
     () => state.calls.some((c) => c.status === "initiating" || c.status === "in-progress"),
@@ -49,13 +51,18 @@ export function useCalls() {
         dispatch({ type: "CLEAR_ACTIVE_CALL" });
       }
 
+      // Only show toast once per call UUID (prevents duplicates on tab switch / re-poll)
+      if (notifiedRef.current.has(data.call_uuid)) return;
+      notifiedRef.current.add(data.call_uuid);
+
       if (isNoAnswer) {
         toast.info("Call not answered", {
           description: `${data.contact_name || "Contact"} did not pick up`,
         });
       } else {
-        toast.success("Call completed!", {
-          description: `${data.contact_name} — ${data.duration_seconds}s, Interest: ${data.interest_level}`,
+        toast.success("Call completed", {
+          description: `${data.contact_name} — ${data.duration_seconds}s`,
+          duration: 3000,
         });
       }
     },

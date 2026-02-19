@@ -180,6 +180,9 @@ export async function POST(request: NextRequest) {
       ...socialProofPayload,
       preResearchEnabled: configDoc?.pre_research_enabled ?? false,
       memoryRecallEnabled: configDoc?.memory_recall_enabled ?? false,
+      socialProofEnabled: configDoc?.social_proof_enabled ?? false,
+      personaEngineEnabled: configDoc?.persona_engine_enabled ?? false,
+      productIntelligenceEnabled: configDoc?.product_intelligence_enabled ?? false,
       ...(botNotes ? { botNotes } : {}),
       ...(configDoc?.voice || payload.voice ? { voice: configDoc?.voice || payload.voice } : {}),
     };
