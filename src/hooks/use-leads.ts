@@ -38,7 +38,7 @@ export function useLeads() {
         if (!cf.column || !cf.value) continue;
         const q = cf.value.toLowerCase();
         result = result.filter((l) => {
-          const val = (l as Record<string, unknown>)[cf.column];
+          const val = (l as unknown as Record<string, unknown>)[cf.column];
           if (val == null) return false;
           return String(val).toLowerCase().includes(q);
         });
