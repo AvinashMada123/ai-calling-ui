@@ -31,7 +31,11 @@ A: ${qp.user_said}`;
     ? `[FULL TRANSCRIPT]\n${callData.transcript.slice(0, 3000)}`
     : "(no Q&A data available)";
 
-  const prompt = `You are an expert lead qualification analyst for "Freedom with AI", a company that helps professionals upskill in AI.
+  const companyLabel = callData.client_name && callData.client_name !== "fwai"
+    ? callData.client_name
+    : "the company";
+
+  const prompt = `You are an expert lead qualification analyst for ${companyLabel}.
 
 Analyze this call transcript Q&A and classify the lead.
 
