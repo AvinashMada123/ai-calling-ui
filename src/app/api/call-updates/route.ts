@@ -8,6 +8,20 @@ const FWAI_BACKEND_URL =
   (process.env.CALL_SERVER_URL || "http://34.93.142.172:3001/call/conversational")
     .replace(/\/call\/conversational$/, "");
 
+// Cooldown map: track the last time we polled the backend for each UUID
+// Prevents hammering the Python backend when calls are stuck in-progress
+const POLL_COOLDOWN_MS = 30_000; // only poll each stuck call once per 30 seconds
+declare global {
+  // eslint-disable-next-line no-var
+  var __callPollLastSeen: Map<string, number> | undefined;
+}
+function getPollCooldownMap(): Map<string, number> {
+  if (!globalThis.__callPollLastSeen) {
+    globalThis.__callPollLastSeen = new Map();
+  }
+  return globalThis.__callPollLastSeen;
+}
+
 export async function GET(request: NextRequest) {
   const authUser = await getAuthenticatedUser(request);
   const orgId = authUser?.orgId || "";
@@ -72,8 +86,20 @@ export async function GET(request: NextRequest) {
       const staleUuids = new Set(staleRows.map((r) => r.call_uuid as string));
 
       if (staleUuids.size > 0) {
+        const pollMap = getPollCooldownMap();
+        const now = Date.now();
+        // Prune old entries to avoid unbounded growth
+        for (const [k, t] of pollMap.entries()) {
+          if (now - t > POLL_COOLDOWN_MS * 4) pollMap.delete(k);
+        }
+
         await Promise.all(
           [...staleUuids].map(async (uuid) => {
+            // Rate-limit: skip if we polled this UUID recently
+            const lastPoll = pollMap.get(uuid) ?? 0;
+            if (now - lastPoll < POLL_COOLDOWN_MS) return;
+            pollMap.set(uuid, now);
+
             const url = `${FWAI_BACKEND_URL}/calls/${uuid}/status`;
             try {
               const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
