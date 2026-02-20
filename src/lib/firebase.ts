@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, type FirebaseApp } from "firebase/app";
-import { getAuth, type Auth } from "firebase/auth";
+import { getAuth, type Auth, setPersistence, browserLocalPersistence } from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
@@ -21,7 +21,11 @@ function getFirebaseApp(): FirebaseApp {
 
 function getFirebaseAuth(): Auth {
   if (_auth) return _auth;
-  _auth = getAuth(getFirebaseApp());
+  const authInstance = getAuth(getFirebaseApp());
+  setPersistence(authInstance, browserLocalPersistence).catch((err) => {
+    console.error("Failed to set auth persistence:", err);
+  });
+  _auth = authInstance;
   return _auth;
 }
 
