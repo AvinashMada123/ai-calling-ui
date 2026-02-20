@@ -82,9 +82,17 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       return;
     }
     if (initialData) {
+      // Deep merge: preserve all DEFAULT_SETTINGS fields that DB settings may not have
+      const db = (initialData.settings || {}) as Partial<AppSettings>;
       baseDispatch({
         type: "SET_SETTINGS",
-        payload: { ...DEFAULT_SETTINGS, ...initialData.settings },
+        payload: {
+          ...DEFAULT_SETTINGS,
+          ...db,
+          defaults: { ...DEFAULT_SETTINGS.defaults, ...(db.defaults || {}) },
+          appearance: { ...DEFAULT_SETTINGS.appearance, ...(db.appearance || {}) },
+          ai: { ...DEFAULT_SETTINGS.ai, ...(db.ai || {}) },
+        },
       });
     }
   }, [orgId, initialData]);

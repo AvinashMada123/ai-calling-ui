@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   useCallback,
   type ReactNode,
@@ -125,7 +126,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   // Flag to skip onAuthStateChanged fetch when signIn/signUp already handled it
-  const handledByAction = { current: false };
+  // Must be useRef so the same object is shared across renders and callbacks
+  const handledByAction = useRef(false);
 
   const refreshProfile = useCallback(async () => {
     if (!state.user) return;
