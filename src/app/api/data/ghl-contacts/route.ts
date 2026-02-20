@@ -105,7 +105,6 @@ export async function POST(request: NextRequest) {
 
     // Load existing GHL leads for upsert
     let synced = 0;
-    const now = new Date().toISOString();
 
     if (contacts.length > 0) {
       // Get existing leads with these GHL IDs
@@ -126,16 +125,16 @@ export async function POST(request: NextRequest) {
 
         if (existingDocId) {
           await query(
-            `UPDATE leads SET contact_name = $1, phone_number = $2, email = $3, company = $4, location = $5, tags = $6, updated_at = $7
-             WHERE id = $8 AND org_id = $9`,
-            [contactName, contact.phone || "", contact.email || null, contact.companyName || null, contact.city || null, JSON.stringify(contact.tags || []), now, existingDocId, orgId]
+            `UPDATE leads SET contact_name = $1, phone_number = $2, email = $3, company = $4, location = $5, tags = $6, updated_at = NOW()
+             WHERE id = $7 AND org_id = $8`,
+            [contactName, contact.phone || "", contact.email || null, contact.companyName || null, contact.city || null, JSON.stringify(contact.tags || []), existingDocId, orgId]
           );
         } else {
           const id = crypto.randomUUID();
           await query(
             `INSERT INTO leads (id, org_id, contact_name, phone_number, email, company, location, tags, status, call_count, source, ghl_contact_id, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'new', 0, 'ghl', $9, $10, $10)`,
-            [id, orgId, contactName, contact.phone || "", contact.email || null, contact.companyName || null, contact.city || null, JSON.stringify(contact.tags || []), contact.id, now]
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, .new., 0, .ghl., $9, NOW(), NOW())`,
+            [id, orgId, contactName, contact.phone || "", contact.email || null, contact.companyName || null, contact.city || null, JSON.stringify(contact.tags || []), contact.id]
           );
         }
         synced++;
@@ -144,9 +143,10 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last sync time
+    const nowIso = new Date().toISOString();
     await query(
-      `UPDATE organizations SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{ghlLastSyncAt}', to_jsonb($1::text)), updated_at = $1 WHERE id = $2`,
-      [now, orgId]
+      `UPDATE organizations SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{ghlLastSyncAt}', to_jsonb($1::text)), updated_at = NOW() WHERE id = $2`,
+      [nowIso, orgId]
     );
 
     const hasMore = !!(ghlData.meta?.startAfterId && ghlData.contacts.length >= GHL_PAGE_LIMIT);

@@ -118,7 +118,7 @@ const SOCIAL_PROOF_ROLES = [
 export async function POST(request: NextRequest) {
   try {
     const { orgId } = await requireUidAndOrg(request);
-    const now = new Date().toISOString();
+    
     let totalSeeded = 0;
 
     // Seed Personas
@@ -127,7 +127,7 @@ export async function POST(request: NextRequest) {
       await query(
         `INSERT INTO personas (id, org_id, name, content, keywords, phrases, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-        [id, orgId, persona.name, persona.content, JSON.stringify(persona.keywords), JSON.stringify(persona.phrases), now]
+        [id, orgId, persona.name, persona.content, JSON.stringify(persona.keywords), JSON.stringify(persona.phrases), NOW()]
       );
       totalSeeded++;
     }
@@ -138,7 +138,7 @@ export async function POST(request: NextRequest) {
       await query(
         `INSERT INTO situations (id, org_id, name, content, keywords, hint, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $7)`,
-        [id, orgId, situation.name, situation.content, JSON.stringify(situation.keywords), situation.hint, now]
+        [id, orgId, situation.name, situation.content, JSON.stringify(situation.keywords), situation.hint, NOW()]
       );
       totalSeeded++;
     }
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
       await query(
         `INSERT INTO product_sections (id, org_id, name, content, keywords, created_at, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $6)`,
-        [id, orgId, section.name, section.content, JSON.stringify(section.keywords), now]
+        [id, orgId, section.name, section.content, JSON.stringify(section.keywords), NOW()]
       );
       totalSeeded++;
     }
@@ -162,7 +162,7 @@ export async function POST(request: NextRequest) {
       await query(
         `INSERT INTO ui_social_proof_companies (id, org_id, company_name, enrollments_count, notable_outcomes, trending, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [`company_${i + 1}`, orgId, c.companyName, c.enrollmentsCount, c.notableOutcomes, c.trending, now]
+        [`company_${i + 1}`, orgId, c.companyName, c.enrollmentsCount, c.notableOutcomes, c.trending, NOW()]
       );
       totalSeeded++;
     }
@@ -171,7 +171,7 @@ export async function POST(request: NextRequest) {
       await query(
         `INSERT INTO ui_social_proof_cities (id, org_id, city_name, enrollments_count, trending, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [`city_${i + 1}`, orgId, c.cityName, c.enrollmentsCount, c.trending, now]
+        [`city_${i + 1}`, orgId, c.cityName, c.enrollmentsCount, c.trending, NOW()]
       );
       totalSeeded++;
     }
@@ -180,7 +180,7 @@ export async function POST(request: NextRequest) {
       await query(
         `INSERT INTO ui_social_proof_roles (id, org_id, role_name, enrollments_count, success_stories, updated_at)
          VALUES ($1, $2, $3, $4, $5, $6)`,
-        [`role_${i + 1}`, orgId, r.roleName, r.enrollmentsCount, r.successStories, now]
+        [`role_${i + 1}`, orgId, r.roleName, r.enrollmentsCount, r.successStories, NOW()]
       );
       totalSeeded++;
     }
