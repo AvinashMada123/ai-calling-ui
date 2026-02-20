@@ -15,17 +15,21 @@ export async function qualifyLead(
   const genAI = new GoogleGenerativeAI(apiKey);
   const model = genAI.getGenerativeModel({ model: "gemini-2.0-flash" });
 
-  const qaSection = callData.question_pairs
-    .map((qp) => {
-      const category = QUESTION_CATEGORY_MAP[qp.question_id] || "other";
-      const isHighSignal = (HIGH_SIGNAL_QUESTIONS as readonly string[]).includes(
-        qp.question_id
-      );
-      return `[${qp.question_id}] (category: ${category}${isHighSignal ? ", HIGH SIGNAL" : ""})
+  const qaSection = callData.question_pairs?.length > 0
+    ? callData.question_pairs
+        .map((qp) => {
+          const category = QUESTION_CATEGORY_MAP[qp.question_id] || "other";
+          const isHighSignal = (HIGH_SIGNAL_QUESTIONS as readonly string[]).includes(
+            qp.question_id
+          );
+          return `[${qp.question_id}] (category: ${category}${isHighSignal ? ", HIGH SIGNAL" : ""})
 Q: ${qp.question_text}
 A: ${qp.user_said}`;
-    })
-    .join("\n\n");
+        })
+        .join("\n\n")
+    : callData.transcript
+    ? `[FULL TRANSCRIPT]\n${callData.transcript.slice(0, 3000)}`
+    : "(no Q&A data available)";
 
   const prompt = `You are an expert lead qualification analyst for "Freedom with AI", a company that helps professionals upskill in AI.
 

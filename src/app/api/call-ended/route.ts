@@ -31,8 +31,9 @@ export async function POST(request: NextRequest) {
     const callStatus = isNoAnswer ? "no-answer" : "completed";
     console.log(`[API /api/call-ended] Call status: ${callStatus}${isNoAnswer ? " (unanswered)" : ""}`);
 
-    // Qualify lead with Gemini if we have question pairs (skip for no-answer)
-    if (!isNoAnswer && data.question_pairs && data.question_pairs.length > 0) {
+    // Qualify lead with Gemini if we have any call data (skip for no-answer)
+    // The Python backend always sends question_pairs:[] but we can still qualify from transcript/summary
+    if (!isNoAnswer && (data.question_pairs?.length > 0 || data.transcript || data.call_summary)) {
       try {
         const qualification = await qualifyLead(data);
         if (qualification) {
