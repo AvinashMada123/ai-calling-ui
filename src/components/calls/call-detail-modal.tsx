@@ -15,19 +15,15 @@ import { Progress } from "@/components/ui/progress";
 import {
   Clock,
   MessageSquare,
-  BarChart3,
   FileText,
   Gauge,
   AlertTriangle,
-  ChevronDown,
-  ChevronUp,
   Activity,
   Zap,
   Timer,
   Target,
   Brain,
   CheckCircle,
-  XCircle,
 } from "lucide-react";
 import type { CallRecord } from "@/types/call";
 import { CallStatusBadge } from "@/components/shared/status-badge";
@@ -70,11 +66,10 @@ function MetricCard({ label, value, unit, icon: Icon }: { label: string; value: 
   );
 }
 
-type Tab = "summary" | "transcript" | "qa" | "metrics" | "qualification" | "intelligence";
+type Tab = "summary" | "transcript" | "metrics" | "qualification" | "intelligence";
 
 export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("summary");
-  const [expandedQA, setExpandedQA] = useState<string | null>(null);
 
   if (!call) return null;
 
@@ -84,7 +79,6 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
     { id: "qualification", label: "Qualification", icon: Target },
     { id: "intelligence", label: "Intelligence", icon: Brain },
     { id: "transcript", label: "Transcript", icon: MessageSquare },
-    { id: "qa", label: "Q&A", icon: BarChart3 },
     { id: "metrics", label: "Metrics", icon: Gauge },
   ];
 
@@ -329,67 +323,6 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                       ) : (
                         <p className="text-sm text-muted-foreground">No transcript available.</p>
                       )}
-                    </div>
-                  )}
-
-                  {activeTab === "qa" && (
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-semibold mb-2">
-                        Question & Answer Pairs ({data.question_pairs.length})
-                      </h4>
-                      {data.question_pairs.map((qa) => (
-                        <motion.div
-                          key={qa.question_id}
-                          layout
-                          className="rounded-lg border overflow-hidden"
-                        >
-                          <button
-                            onClick={() =>
-                              setExpandedQA(expandedQA === qa.question_id ? null : qa.question_id)
-                            }
-                            className="flex w-full items-center justify-between p-3 text-left hover:bg-muted/50 transition-colors"
-                          >
-                            <span className="text-sm font-medium pr-2">{qa.question_text}</span>
-                            {expandedQA === qa.question_id ? (
-                              <ChevronUp className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            ) : (
-                              <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
-                            )}
-                          </button>
-                          <AnimatePresence>
-                            {expandedQA === qa.question_id && (
-                              <motion.div
-                                initial={{ height: 0 }}
-                                animate={{ height: "auto" }}
-                                exit={{ height: 0 }}
-                                transition={{ duration: 0.2 }}
-                                className="overflow-hidden"
-                              >
-                                <div className="border-t p-3 space-y-3">
-                                  <div>
-                                    <p className="text-xs text-muted-foreground mb-1">Agent said:</p>
-                                    <p className="text-sm bg-primary/5 rounded-md p-2">{qa.agent_said}</p>
-                                  </div>
-                                  <div>
-                                    <p className="text-xs text-muted-foreground mb-1">User replied:</p>
-                                    <p className="text-sm bg-muted/50 rounded-md p-2">{qa.user_said}</p>
-                                  </div>
-                                  <div className="flex gap-4 text-xs text-muted-foreground">
-                                    <span className="flex items-center gap-1">
-                                      <Timer className="h-3 w-3" />
-                                      {qa.duration_seconds}s
-                                    </span>
-                                    <span className="flex items-center gap-1">
-                                      <Zap className="h-3 w-3" />
-                                      {qa.response_latency_ms}ms latency
-                                    </span>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </motion.div>
-                      ))}
                     </div>
                   )}
 

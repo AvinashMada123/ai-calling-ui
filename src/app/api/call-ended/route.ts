@@ -88,13 +88,19 @@ export async function POST(request: NextRequest) {
             try {
               const noteParts: string[] = [];
               const now = new Date().toISOString().split("T")[0];
-              noteParts.push(`--- Call ${now} ---`);
+              noteParts.push(`--- Call ${now} (${data.duration_seconds || 0}s) ---`);
               if (data.call_summary) noteParts.push(`Summary: ${data.call_summary}`);
+              // Qualification crux
+              if (data.qualification) {
+                noteParts.push(`Qualification: ${data.qualification.level} (${data.qualification.confidence}%)`);
+                if (data.qualification.reasoning) noteParts.push(`Reasoning: ${data.qualification.reasoning}`);
+                if (data.qualification.painPoints?.length) noteParts.push(`Pain points: ${data.qualification.painPoints.join("; ")}`);
+                if (data.qualification.recommendedAction) noteParts.push(`Next action: ${data.qualification.recommendedAction}`);
+              }
+              if (data.interest_level && data.interest_level !== "Unknown") noteParts.push(`Interest: ${data.interest_level}`);
               if (data.triggered_persona) noteParts.push(`Persona: ${data.triggered_persona}`);
               if (data.triggered_situations?.length) noteParts.push(`Situations: ${data.triggered_situations.join(", ")}`);
               if (data.triggered_product_sections?.length) noteParts.push(`Products discussed: ${data.triggered_product_sections.join(", ")}`);
-              if (data.interest_level) noteParts.push(`Interest: ${data.interest_level}`);
-              noteParts.push(`Duration: ${data.duration_seconds || 0}s`);
 
               if (noteParts.length > 1) {
                 const noteBlock = noteParts.join("\n");
