@@ -5,34 +5,33 @@ import { requireUidAndOrg, query, queryOne, toCamel, toCamelRows } from "@/lib/d
  * GET /api/data/init
  * Returns all bootstrap data for the authenticated user in a single round-trip.
  * Called by fetchInit() in auth-context on login and page refresh.
+ * Each sub-query is individually fault-tolerant — one bad table won't kill the response.
  */
 export async function GET(request: NextRequest) {
   try {
     const { uid, orgId } = await requireUidAndOrg(request);
 
-    // Fetch everything in parallel
+    // Run all queries in parallel; use individual try/catch so one failure returns [] not 500
+    const safeQuery = async (sql: string, values: unknown[]) => {
+      try { return await query(sql, values); } catch { return []; }
+    };
+    const safeQueryOne = async <T extends Record<string, unknown>>(sql: string, values: unknown[]) => {
+      try { return await queryOne<T>(sql, values); } catch { return null; }
+    };
+
     const [userRow, orgRow, leads, calls, botConfigs, team] = await Promise.all([
-      queryOne(
+      safeQueryOne(
         "SELECT uid, email, display_name, role, org_id, status, created_at, last_login_at, invited_by FROM users WHERE uid = $1",
         [uid]
       ),
-      queryOne<{ settings: Record<string, unknown> }>(
+      safeQueryOne<{ settings: Record<string, unknown> }>(
         "SELECT settings FROM organizations WHERE id = $1",
         [orgId]
       ),
-      query(
-        "SELECT * FROM leads WHERE org_id = $1 ORDER BY created_at DESC",
-        [orgId]
-      ),
-      query(
-        "SELECT * FROM calls WHERE org_id = $1 ORDER BY initiated_at DESC LIMIT 200",
-        [orgId]
-      ),
-      query(
-        "SELECT * FROM bot_configs WHERE org_id = $1 ORDER BY created_at DESC",
-        [orgId]
-      ),
-      query(
+      safeQuery("SELECT * FROM leads WHERE org_id = $1 ORDER BY created_at DESC", [orgId]),
+      safeQuery("SELECT * FROM ui_calls WHERE org_id = $1 ORDER BY initiated_at DESC LIMIT 200", [orgId]),
+      safeQuery("SELECT * FROM bot_configs WHERE org_id = $1 ORDER BY created_at DESC", [orgId]),
+      safeQuery(
         "SELECT uid, email, display_name, role, org_id, status, created_at, invited_by FROM users WHERE org_id = $1",
         [orgId]
       ),
