@@ -154,7 +154,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[GHL Sync] Batch done. Synced: ${synced}, hasMore: ${hasMore}`);
 
-    return NextResponse.json({ success: true, synced, totalInGHL, hasMore, nextCursor, ghlLastSyncAt: now });
+    return NextResponse.json({ success: true, synced, totalInGHL, hasMore, nextCursor, ghlLastSyncAt: nowIso });
   } catch (error) {
     console.error("[GHL Contacts API] POST error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";
