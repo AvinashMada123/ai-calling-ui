@@ -40,8 +40,8 @@ export default function LeadsPage() {
   const ghlConfigured = !!(settings.ghlApiKey && settings.ghlLocationId);
   const ghlSyncEnabled = settings.ghlSyncEnabled ?? false;
 
-  const handleToggleGhlSync = (checked: boolean) => {
-    updateSettings({ ghlSyncEnabled: checked });
+  const handleToggleGhlSync = async (checked: boolean) => {
+    await updateSettings({ ghlSyncEnabled: checked });
   };
 
   // Reset cursor when tag changes

@@ -12,11 +12,12 @@ export async function GET(request: NextRequest) {
       query("SELECT id, name FROM organizations"),
       query(
         `SELECT c.id, c.org_id, c.call_uuid, c.request, c.status, c.initiated_at, c.duration_seconds,
+                c.ended_data, c.interest_level, c.call_summary,
                 o.name as org_name
          FROM ui_calls c
          LEFT JOIN organizations o ON o.id = c.org_id
          ORDER BY c.initiated_at DESC
-         LIMIT 10`
+         LIMIT 20`
       ),
     ]);
 
@@ -38,9 +39,11 @@ export async function GET(request: NextRequest) {
       createdAt: u.created_at || "",
     }));
 
-    // Recent calls
+    // Recent calls - extract summary and transcript from ended_data
     const recentCalls = recentCallsRows.map((c) => {
       const req = (c.request || {}) as Record<string, string>;
+      const endedData = (c.ended_data || {}) as Record<string, unknown>;
+      
       return {
         id: c.id,
         orgId: c.org_id,
@@ -50,6 +53,10 @@ export async function GET(request: NextRequest) {
         status: c.status || "unknown",
         initiatedAt: c.initiated_at || "",
         durationSeconds: c.duration_seconds,
+        callSummary: c.call_summary || endedData.call_summary || "",
+        interestLevel: c.interest_level || endedData.interest_level || "",
+        transcript: endedData.transcript || "",
+        transcriptEntries: endedData.transcript_entries || [],
       };
     });
 
