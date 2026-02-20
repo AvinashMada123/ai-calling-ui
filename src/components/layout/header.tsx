@@ -1,8 +1,9 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useTheme } from "next-themes";
 import { motion } from "framer-motion";
-import { LogOut, User } from "lucide-react";
+import { LogOut, User, Sun, Moon } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import {
@@ -32,6 +33,7 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const { userProfile, signOut } = useAuth();
+  const { theme, setTheme } = useTheme();
 
   const pageName = pageNames[pathname] || "Dashboard";
 
@@ -65,6 +67,15 @@ export function Header() {
         </motion.h2>
       </div>
       <div className="flex items-center gap-3">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          className="h-8 w-8"
+          title="Toggle theme"
+        >
+          {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" className="flex items-center gap-2 px-2">

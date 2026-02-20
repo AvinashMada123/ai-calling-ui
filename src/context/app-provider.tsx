@@ -1,6 +1,7 @@
 "use client";
 
 import { type ReactNode } from "react";
+import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "./auth-context";
 import { SettingsProvider } from "./settings-context";
 import { LeadsProvider } from "./leads-context";
@@ -16,18 +17,20 @@ function QualificationSyncRunner() {
 
 export function AppProvider({ children }: { children: ReactNode }) {
   return (
-    <AuthProvider>
-      <SettingsProvider>
-        <LeadsProvider>
-          <CallsProvider>
-            <TooltipProvider>
-              <QualificationSyncRunner />
-              {children}
-              <Toaster richColors position="bottom-right" />
-            </TooltipProvider>
-          </CallsProvider>
-        </LeadsProvider>
-      </SettingsProvider>
-    </AuthProvider>
+    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem={false}>
+      <AuthProvider>
+        <SettingsProvider>
+          <LeadsProvider>
+            <CallsProvider>
+              <TooltipProvider>
+                <QualificationSyncRunner />
+                {children}
+                <Toaster richColors position="bottom-right" />
+              </TooltipProvider>
+            </CallsProvider>
+          </LeadsProvider>
+        </SettingsProvider>
+      </AuthProvider>
+    </ThemeProvider>
   );
 }
