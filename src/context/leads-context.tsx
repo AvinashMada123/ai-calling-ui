@@ -37,6 +37,7 @@ const initialFilters: LeadFilters = {
   status: "all",
   source: "all",
   tag: "all",
+  customFilters: [],
 };
 
 function leadsReducer(state: LeadsState, action: LeadsAction): LeadsState {

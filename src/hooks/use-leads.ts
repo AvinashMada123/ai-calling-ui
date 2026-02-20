@@ -33,6 +33,18 @@ export function useLeads() {
       );
     }
 
+    if (state.filters.customFilters?.length) {
+      for (const cf of state.filters.customFilters) {
+        if (!cf.column || !cf.value) continue;
+        const q = cf.value.toLowerCase();
+        result = result.filter((l) => {
+          const val = (l as Record<string, unknown>)[cf.column];
+          if (val == null) return false;
+          return String(val).toLowerCase().includes(q);
+        });
+      }
+    }
+
     return result;
   }, [state.leads, state.filters]);
 

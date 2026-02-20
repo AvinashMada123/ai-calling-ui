@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Trash2, Phone } from "lucide-react";
+import { Search, Trash2, Phone, Plus, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -17,9 +17,19 @@ import { useSettings } from "@/hooks/use-settings";
 import { useCalls } from "@/hooks/use-calls";
 import { BulkCallDialog } from "@/components/leads/bulk-call-dialog";
 import { toast } from "sonner";
-import type { LeadStatus } from "@/types/lead";
+import type { LeadStatus, CustomFilter } from "@/types/lead";
 import type { Lead } from "@/types/lead";
 import type { CallRequest } from "@/types/call";
+
+const FILTERABLE_COLUMNS: { value: string; label: string }[] = [
+  { value: "contactName", label: "Name" },
+  { value: "phoneNumber", label: "Phone" },
+  { value: "email", label: "Email" },
+  { value: "company", label: "Company" },
+  { value: "location", label: "Location" },
+  { value: "qualificationLevel", label: "Qualification" },
+  { value: "botNotes", label: "Bot Notes" },
+];
 
 const MAX_CONCURRENT = 5;
 
@@ -31,6 +41,21 @@ export function LeadsToolbar() {
   const [searchValue, setSearchValue] = useState(filters.search);
   const [bulkCallOpen, setBulkCallOpen] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const customFilters: CustomFilter[] = filters.customFilters || [];
+
+  const addCustomFilter = () => {
+    setFilters({ customFilters: [...customFilters, { column: "contactName", value: "" }] });
+  };
+
+  const updateCustomFilter = (index: number, updates: Partial<CustomFilter>) => {
+    const updated = customFilters.map((f, i) => (i === index ? { ...f, ...updates } : f));
+    setFilters({ customFilters: updated });
+  };
+
+  const removeCustomFilter = (index: number) => {
+    setFilters({ customFilters: customFilters.filter((_, i) => i !== index) });
+  };
 
   useEffect(() => {
     if (debounceRef.current) {
@@ -114,8 +139,8 @@ export function LeadsToolbar() {
 
   return (
     <>
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-1 items-center gap-3">
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-1 items-center gap-3 flex-wrap">
           <div className="relative flex-1 max-w-sm">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -181,8 +206,58 @@ export function LeadsToolbar() {
               </SelectContent>
             </Select>
           )}
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={addCustomFilter}
+            className="h-9 gap-1"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add Filter
+          </Button>
         </div>
 
+        {customFilters.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {customFilters.map((cf, index) => (
+              <div key={index} className="flex items-center gap-1.5 rounded-md border px-2 py-1 bg-muted/40">
+                <Select
+                  value={cf.column}
+                  onValueChange={(value) => updateCustomFilter(index, { column: value })}
+                >
+                  <SelectTrigger className="h-7 w-[130px] border-0 bg-transparent p-0 text-sm shadow-none focus:ring-0">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FILTERABLE_COLUMNS.map((col) => (
+                      <SelectItem key={col.value} value={col.value}>
+                        {col.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-muted-foreground text-xs">contains</span>
+                <Input
+                  value={cf.value}
+                  onChange={(e) => updateCustomFilter(index, { value: e.target.value })}
+                  placeholder="value..."
+                  className="h-7 w-[120px] border-0 bg-transparent p-0 text-sm shadow-none focus-visible:ring-0"
+                />
+                <button
+                  onClick={() => removeCustomFilter(index)}
+                  className="text-muted-foreground hover:text-foreground ml-1"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between">
+        <div />
         <AnimatePresence>
           {selectedIds.length > 0 && (
             <motion.div

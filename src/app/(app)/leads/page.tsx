@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -239,9 +240,24 @@ export default function LeadsPage() {
                   </Button>
                 )}
 
-                {totalSynced > 0 && (
+                {totalSynced > 0 && totalInGHL && (
+                  <div className="flex-1 min-w-[200px] space-y-1">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>{totalSynced} synced</span>
+                      <span>{totalInGHL} total in GHL</span>
+                    </div>
+                    <Progress
+                      value={Math.min(100, Math.round((totalSynced / totalInGHL) * 100))}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      {Math.min(100, Math.round((totalSynced / totalInGHL) * 100))}%
+                      {nextCursor ? " — more available" : " — all fetched"}
+                    </p>
+                  </div>
+                )}
+                {totalSynced > 0 && !totalInGHL && (
                   <span className="text-sm text-muted-foreground">
-                    {totalSynced} synced{totalInGHL ? ` / ${totalInGHL} total in GHL` : ""}
+                    {totalSynced} synced
                     {nextCursor ? " — more available" : " — all fetched"}
                   </span>
                 )}

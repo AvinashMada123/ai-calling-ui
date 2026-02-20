@@ -133,7 +133,7 @@ export async function POST(request: NextRequest) {
           const id = crypto.randomUUID();
           await query(
             `INSERT INTO leads (id, org_id, contact_name, phone_number, email, company, location, tags, status, call_count, source, ghl_contact_id, created_at, updated_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, .new., 0, .ghl., $9, NOW(), NOW())`,
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'new', 0, 'ghl', $9, NOW(), NOW())`,
             [id, orgId, contactName, contact.phone || "", contact.email || null, contact.companyName || null, contact.city || null, JSON.stringify(contact.tags || []), contact.id]
           );
         }

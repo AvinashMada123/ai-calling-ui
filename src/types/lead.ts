@@ -28,11 +28,17 @@ export type LeadStatus =
   | "unresponsive"
   | "do-not-call";
 
+export interface CustomFilter {
+  column: string;
+  value: string;
+}
+
 export interface LeadFilters {
   search: string;
   status: LeadStatus | "all";
   source: Lead["source"] | "all";
   tag: string;
+  customFilters: CustomFilter[];
 }
 
 export interface ColumnMapping {
