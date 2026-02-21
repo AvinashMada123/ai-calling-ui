@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getUidAndOrgFromToken, query, queryOne, toCamelRows } from "@/lib/db";
+import { sendInviteEmail } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   try {
@@ -55,6 +56,13 @@ export async function POST(request: NextRequest) {
             expiresAt.toISOString(),
           ]
         );
+
+        const baseUrl = request.nextUrl.origin;
+        try {
+          await sendInviteEmail({ toEmail: email.trim().toLowerCase(), orgName, inviteId, baseUrl });
+        } catch (emailErr) {
+          console.error("[Team API] Failed to send invite email:", emailErr);
+        }
 
         return NextResponse.json({ success: true, inviteId });
       }

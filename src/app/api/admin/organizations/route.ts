@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireSuperAdmin, query, queryOne, toCamelRows } from "@/lib/db";
 import { DEFAULT_BOT_CONFIG } from "@/lib/default-bot-config";
+import { sendInviteEmail } from "@/lib/email";
 
 export async function GET(request: NextRequest) {
   try {
@@ -92,6 +93,12 @@ export async function POST(request: NextRequest) {
              VALUES ($1, $2, $3, $4, 'client_admin', $5, 'pending', $6, $7)`,
             [inviteId, adminEmail.trim().toLowerCase(), orgId, orgName.trim(), uid, now, expiresAt.toISOString()]
           );
+          const baseUrl = request.nextUrl.origin;
+          try {
+            await sendInviteEmail({ toEmail: adminEmail.trim().toLowerCase(), orgName: orgName.trim(), inviteId, baseUrl });
+          } catch (emailErr) {
+            console.error("[Admin Org API] Failed to send invite email:", emailErr);
+          }
         }
 
         return NextResponse.json({ success: true, orgId, inviteId });
@@ -147,6 +154,13 @@ export async function POST(request: NextRequest) {
            VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)`,
           [inviteId, email.trim().toLowerCase(), orgId, orgName, role || "client_user", uid, now.toISOString(), expiresAt.toISOString()]
         );
+
+        const baseUrl = request.nextUrl.origin;
+        try {
+          await sendInviteEmail({ toEmail: email.trim().toLowerCase(), orgName, inviteId, baseUrl });
+        } catch (emailErr) {
+          console.error("[Admin Org API] Failed to send invite email:", emailErr);
+        }
 
         return NextResponse.json({ success: true, inviteId });
       }

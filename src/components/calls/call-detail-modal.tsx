@@ -10,7 +10,6 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import {
   Clock,
@@ -24,6 +23,7 @@ import {
   Target,
   Brain,
   CheckCircle,
+  HelpCircle,
 } from "lucide-react";
 import type { CallRecord } from "@/types/call";
 import { CallStatusBadge } from "@/components/shared/status-badge";
@@ -84,7 +84,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] p-0 gap-0 overflow-hidden flex flex-col">
+      <DialogContent className="max-w-3xl max-h-[90vh] p-0 gap-0 overflow-hidden flex flex-col">
         <DialogHeader className="px-6 pt-6 pb-4 shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -167,11 +167,12 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                   transition={{ duration: 0.15 }}
                   className="p-6"
                 >
+                  {/* ── SUMMARY TAB ── */}
                   {activeTab === "summary" && (
                     <div className="space-y-5">
                       <div>
                         <h4 className="text-sm font-semibold mb-2">Call Summary</h4>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
+                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
                           {data.call_summary || "No summary available for this call."}
                         </p>
                       </div>
@@ -184,7 +185,6 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                             AI Intelligence
                           </h4>
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            {/* Persona */}
                             <div className="rounded-md border bg-background/60 p-3">
                               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Persona</p>
                               {data.triggered_persona ? (
@@ -195,7 +195,6 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                                 <span className="text-xs text-muted-foreground">Not detected</span>
                               )}
                             </div>
-                            {/* Product Sections */}
                             <div className="rounded-md border bg-background/60 p-3">
                               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Products Triggered</p>
                               {data.triggered_product_sections && data.triggered_product_sections.length > 0 ? (
@@ -210,7 +209,6 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                                 <span className="text-xs text-muted-foreground">None</span>
                               )}
                             </div>
-                            {/* Social Proof — only show when used */}
                             {data.social_proof_used && (
                               <div className="rounded-md border bg-background/60 p-3">
                                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Social Proof</p>
@@ -269,63 +267,115 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                     </div>
                   )}
 
+                  {/* ── TRANSCRIPT TAB ── */}
                   {activeTab === "transcript" && (
                     <div className="space-y-3">
-                      <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
+                      <h4 className="text-sm font-semibold">Full Transcript</h4>
+
                       {data.transcript_entries && data.transcript_entries.length > 0 ? (
-                        <div className="space-y-3">
-                          {data.transcript_entries.map((entry, i) => {
-                            const isAgent = entry.role === "agent" || entry.role === "model" || entry.role === "assistant";
-                            return (
-                              <div key={i} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
-                                <div className={`max-w-[80%] rounded-lg p-3 ${
-                                  isAgent
-                                    ? "bg-primary/10 border border-primary/20"
-                                    : "bg-muted/50 border border-border"
-                                }`}>
-                                  <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                                    {isAgent ? "Agent" : "Customer"}
-                                  </p>
-                                  <p className="text-sm leading-relaxed">{entry.text}</p>
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <div className="rounded-lg border overflow-hidden">
+                          <table className="w-full text-sm border-collapse">
+                            <thead>
+                              <tr className="border-b bg-muted/50">
+                                <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-8 font-medium">#</th>
+                                <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-28 font-medium">Speaker</th>
+                                <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 font-medium">Message</th>
+                                <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-20 font-medium">Time</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {data.transcript_entries.map((entry, i) => {
+                                const isAgent = entry.role === "agent" || entry.role === "model" || entry.role === "assistant";
+                                let timeLabel = "—";
+                                if (entry.timestamp) {
+                                  try {
+                                    timeLabel = new Date(entry.timestamp).toLocaleTimeString([], {
+                                      hour: "2-digit",
+                                      minute: "2-digit",
+                                      second: "2-digit",
+                                    });
+                                  } catch {
+                                    timeLabel = entry.timestamp;
+                                  }
+                                }
+                                return (
+                                  <tr
+                                    key={i}
+                                    className={cn(
+                                      "border-b last:border-0 align-top",
+                                      isAgent ? "bg-background" : "bg-muted/20"
+                                    )}
+                                  >
+                                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
+                                    <td className="px-3 py-2.5">
+                                      <span className={cn(
+                                        "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                        isAgent
+                                          ? "bg-primary/10 text-primary"
+                                          : "bg-muted text-muted-foreground border border-border"
+                                      )}>
+                                        {isAgent ? "Agent" : "Customer"}
+                                      </span>
+                                    </td>
+                                    <td className="px-3 py-2.5 text-sm leading-relaxed">{entry.text}</td>
+                                    <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{timeLabel}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
                         </div>
                       ) : data.transcript ? (
-                        <div className="space-y-3">
-                          {data.transcript.split("\n").filter(Boolean).map((line, i) => {
+                        (() => {
+                          const rows: { isAgent: boolean; text: string }[] = [];
+                          data.transcript.split("\n").filter(Boolean).forEach((line) => {
                             const agentMatch = line.match(/^(Agent|Bot|AI|Model|Assistant)\s*:/i);
                             const userMatch = line.match(/^(User|Customer|Caller|Human)\s*:/i);
                             if (agentMatch || userMatch) {
-                              const isAgent = !!agentMatch;
-                              const text = line.replace(/^[^:]+:\s*/, "");
-                              return (
-                                <div key={i} className={`flex ${isAgent ? "justify-start" : "justify-end"}`}>
-                                  <div className={`max-w-[80%] rounded-lg p-3 ${
-                                    isAgent
-                                      ? "bg-primary/10 border border-primary/20"
-                                      : "bg-muted/50 border border-border"
-                                  }`}>
-                                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">
-                                      {isAgent ? "Agent" : "Customer"}
-                                    </p>
-                                    <p className="text-sm leading-relaxed">{text}</p>
-                                  </div>
-                                </div>
-                              );
+                              rows.push({ isAgent: !!agentMatch, text: line.replace(/^[^:]+:\s*/, "") });
+                            } else {
+                              rows.push({ isAgent: false, text: line });
                             }
-                            return (
-                              <p key={i} className="text-sm text-muted-foreground leading-relaxed px-2">{line}</p>
-                            );
-                          })}
-                        </div>
+                          });
+                          return (
+                            <div className="rounded-lg border overflow-hidden">
+                              <table className="w-full text-sm border-collapse">
+                                <thead>
+                                  <tr className="border-b bg-muted/50">
+                                    <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-8 font-medium">#</th>
+                                    <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-28 font-medium">Speaker</th>
+                                    <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 font-medium">Message</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {rows.map((row, i) => (
+                                    <tr key={i} className={cn("border-b last:border-0 align-top", row.isAgent ? "bg-background" : "bg-muted/20")}>
+                                      <td className="px-3 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
+                                      <td className="px-3 py-2.5">
+                                        <span className={cn(
+                                          "inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium",
+                                          row.isAgent
+                                            ? "bg-primary/10 text-primary"
+                                            : "bg-muted text-muted-foreground border border-border"
+                                        )}>
+                                          {row.isAgent ? "Agent" : "Customer"}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-2.5 text-sm leading-relaxed">{row.text}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          );
+                        })()
                       ) : (
                         <p className="text-sm text-muted-foreground">No transcript available.</p>
                       )}
                     </div>
                   )}
 
+                  {/* ── METRICS TAB ── */}
                   {activeTab === "metrics" && (
                     <div className="space-y-5">
                       <h4 className="text-sm font-semibold mb-2">Call Performance Metrics</h4>
@@ -349,6 +399,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                     </div>
                   )}
 
+                  {/* ── QUALIFICATION TAB ── */}
                   {activeTab === "qualification" && data.qualification && (
                     <div className="space-y-5">
                       <div className="flex items-center justify-between">
@@ -367,7 +418,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
 
                       <div>
                         <h4 className="text-sm font-semibold mb-2">Reasoning</h4>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
+                        <p className="text-sm text-muted-foreground leading-relaxed whitespace-pre-wrap">
                           {data.qualification.reasoning}
                         </p>
                       </div>
@@ -443,54 +494,175 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                     </div>
                   )}
 
+                  {/* ── INTELLIGENCE TAB ── */}
                   {activeTab === "intelligence" && (
-                    <div className="space-y-5">
-                      <h4 className="text-sm font-semibold mb-2">AI Intelligence Data</h4>
+                    <div className="space-y-6">
 
-                      {data.triggered_persona && (
-                        <div>
-                          <h4 className="text-sm font-semibold mb-2">Detected Persona</h4>
-                          <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20">
-                            {data.triggered_persona}
-                          </Badge>
+                      {/* Engagement Overview */}
+                      <div>
+                        <h4 className="text-sm font-semibold mb-3">Engagement Overview</h4>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          <div className="rounded-lg border bg-muted/30 p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Interest Level</p>
+                            <p className="text-sm font-semibold">{data.interest_level || "—"}</p>
+                          </div>
+                          <div className="rounded-lg border bg-muted/30 p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Completion</p>
+                            <p className="text-sm font-semibold">
+                              {Math.round(data.completion_rate > 1 ? data.completion_rate : data.completion_rate * 100)}%
+                            </p>
+                          </div>
+                          <div className="rounded-lg border bg-muted/30 p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Objections</p>
+                            <p className="text-sm font-semibold">{data.objections_raised.length}</p>
+                          </div>
+                          <div className="rounded-lg border bg-muted/30 p-3">
+                            <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Avg Response</p>
+                            <p className="text-sm font-semibold">{data.call_metrics.avg_latency_ms}<span className="text-xs text-muted-foreground ml-0.5">ms</span></p>
+                          </div>
                         </div>
-                      )}
+                      </div>
 
-                      {data.triggered_situations && data.triggered_situations.length > 0 && (
+                      {/* Question & Response Breakdown */}
+                      {data.question_pairs && data.question_pairs.length > 0 && (
                         <div>
-                          <h4 className="text-sm font-semibold mb-2">Triggered Situations</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {data.triggered_situations.map((s, i) => (
-                              <Badge key={i} variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">
-                                {s}
-                              </Badge>
-                            ))}
+                          <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                            <HelpCircle className="h-3.5 w-3.5 text-muted-foreground" />
+                            Question & Response Breakdown
+                          </h4>
+                          <div className="rounded-lg border overflow-hidden">
+                            <table className="w-full text-sm border-collapse">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-6 font-medium">#</th>
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 font-medium">Question</th>
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 font-medium">Customer Response</th>
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-16 font-medium">Duration</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.question_pairs.map((pair, i) => (
+                                  <tr key={i} className="border-b last:border-0 align-top">
+                                    <td className="px-3 py-2.5 text-xs text-muted-foreground">{i + 1}</td>
+                                    <td className="px-3 py-2.5 text-xs text-muted-foreground leading-relaxed">{pair.question_text}</td>
+                                    <td className="px-3 py-2.5 text-xs leading-relaxed">{pair.user_said || <span className="text-muted-foreground italic">No response</span>}</td>
+                                    <td className="px-3 py-2.5 text-xs text-muted-foreground whitespace-nowrap">{pair.duration_seconds}s</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       )}
 
-                      {data.triggered_product_sections && data.triggered_product_sections.length > 0 && (
+                      {/* Collected Responses */}
+                      {Object.keys(data.collected_responses).length > 0 && (
                         <div>
-                          <h4 className="text-sm font-semibold mb-2">Active Product Sections</h4>
-                          <div className="flex flex-wrap gap-2">
-                            {data.triggered_product_sections.map((s, i) => (
-                              <Badge key={i} variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
-                                {s}
-                              </Badge>
-                            ))}
+                          <h4 className="text-sm font-semibold mb-3">Collected Data Points</h4>
+                          <div className="rounded-lg border overflow-hidden">
+                            <table className="w-full text-sm border-collapse">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 font-medium">Field</th>
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 font-medium">Value</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.entries(data.collected_responses).map(([key, value]) => (
+                                  <tr key={key} className="border-b last:border-0 align-top">
+                                    <td className="px-3 py-2.5 text-xs text-muted-foreground font-medium whitespace-nowrap">{key}</td>
+                                    <td className="px-3 py-2.5 text-sm">{value}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
                           </div>
                         </div>
                       )}
 
-                      {data.social_proof_used && (
+                      {/* AI Behaviour Triggers */}
+                      {(data.triggered_persona || (data.triggered_situations && data.triggered_situations.length > 0) || (data.triggered_product_sections && data.triggered_product_sections.length > 0) || data.social_proof_used) && (
                         <div>
-                          <h4 className="text-sm font-semibold mb-2">Social Proof</h4>
-                          <div className="flex items-center gap-2 text-sm">
-                            <CheckCircle className="h-4 w-4 text-emerald-400" />
-                            <span className="text-muted-foreground">Social proof was used during this call</span>
+                          <h4 className="text-sm font-semibold mb-3 flex items-center gap-1.5">
+                            <Brain className="h-3.5 w-3.5 text-violet-400" />
+                            AI Behaviour Triggers
+                          </h4>
+                          <div className="space-y-3">
+                            {data.triggered_persona && (
+                              <div className="rounded-lg border p-3">
+                                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Detected Persona</p>
+                                <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20">
+                                  {data.triggered_persona.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  The AI identified this prospect&apos;s profile and adapted its conversation style accordingly.
+                                </p>
+                              </div>
+                            )}
+
+                            {data.triggered_situations && data.triggered_situations.length > 0 && (
+                              <div className="rounded-lg border p-3">
+                                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                                  Situations Handled ({data.triggered_situations.length})
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {data.triggered_situations.map((s, i) => (
+                                    <Badge key={i} variant="outline" className="text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">
+                                      {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  These conversational situations were detected and handled using predefined response strategies.
+                                </p>
+                              </div>
+                            )}
+
+                            {data.triggered_product_sections && data.triggered_product_sections.length > 0 && (
+                              <div className="rounded-lg border p-3">
+                                <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
+                                  Products Discussed ({data.triggered_product_sections.length})
+                                </p>
+                                <div className="flex flex-wrap gap-1.5">
+                                  {data.triggered_product_sections.map((s, i) => (
+                                    <Badge key={i} variant="outline" className="text-xs bg-emerald-500/10 text-emerald-400 border-emerald-500/20">
+                                      {s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                                    </Badge>
+                                  ))}
+                                </div>
+                                <p className="text-xs text-muted-foreground mt-2">
+                                  Product knowledge from these sections was surfaced based on the conversation context.
+                                </p>
+                              </div>
+                            )}
+
+                            {data.social_proof_used && (
+                              <div className="rounded-lg border p-3 flex items-start gap-3">
+                                <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />
+                                <div>
+                                  <p className="text-sm font-medium">Social Proof Used</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">
+                                    The AI used social proof examples (companies, cities, or roles) to build credibility during the call.
+                                  </p>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
                       )}
+
+                      {/* Empty state */}
+                      {!data.triggered_persona &&
+                        !data.triggered_situations?.length &&
+                        !data.triggered_product_sections?.length &&
+                        !data.social_proof_used &&
+                        !data.question_pairs?.length &&
+                        Object.keys(data.collected_responses).length === 0 && (
+                          <div className="text-center py-8 text-sm text-muted-foreground">
+                            <Brain className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                            <p>No intelligence data available for this call.</p>
+                          </div>
+                        )}
                     </div>
                   )}
                 </motion.div>
