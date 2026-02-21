@@ -26,6 +26,31 @@ export async function POST(request: NextRequest) {
       data.transcript_entries = [];
     }
 
+    // Strip stage-direction pause markers from agent text, e.g. "(pa 2-3 seconds)", "(pause)", "(wait 1 second)"
+    // These are LLM artefacts that should never appear in transcripts or be spoken by TTS
+    const stripPauseMarkers = (text: string): string =>
+      text
+        .replace(/\(\s*(?:pa|pause|wait|silence|breath(?:e|ing)?|sigh|chuckle|laughs?|hmm+|umm+)[^)]*\)/gi, "")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+
+    if (Array.isArray(data.transcript_entries)) {
+      data.transcript_entries = data.transcript_entries.map(
+        (entry: { role: string; text: string; timestamp: string }) => ({
+          ...entry,
+          text: stripPauseMarkers(entry.text ?? ""),
+        })
+      );
+    }
+    if (Array.isArray(data.question_pairs)) {
+      data.question_pairs = data.question_pairs.map(
+        (pair: { agent_said: string; user_said: string; [key: string]: unknown }) => ({
+          ...pair,
+          agent_said: stripPauseMarkers(pair.agent_said ?? ""),
+        })
+      );
+    }
+
     // Determine call status — no_answer means call was not picked up
     const isNoAnswer = !!data.no_answer;
     const callStatus = isNoAnswer ? "no-answer" : "completed";
