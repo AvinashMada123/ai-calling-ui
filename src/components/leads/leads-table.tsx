@@ -3,7 +3,7 @@
 import { useState, useCallback, Fragment } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { MoreHorizontal, Phone, Trash2, Users, StickyNote, Save, Loader2 } from "lucide-react";
+import { MoreHorizontal, Phone, Trash2, Users, StickyNote, Save, Loader2, X } from "lucide-react";
 import {
   Table,
   TableBody,
@@ -68,6 +68,7 @@ export function LeadsTable() {
       });
       if (res.ok) {
         updateLead(leadId, { botNotes: notesText });
+        setNotesOpenId(null);
         toast.success("Bot notes saved");
       } else {
         toast.error("Failed to save notes");
@@ -239,14 +240,23 @@ export function LeadsTable() {
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-sm font-medium">Bot Notes for {lead.contactName}</span>
-                      <Button
-                        size="sm"
-                        onClick={() => handleSaveNotes(lead.id)}
-                        disabled={savingNotes}
-                      >
-                        {savingNotes ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
-                        Save
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => handleSaveNotes(lead.id)}
+                          disabled={savingNotes}
+                        >
+                          {savingNotes ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Save className="h-4 w-4 mr-1" />}
+                          Save
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setNotesOpenId(null)}
+                        >
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
                     <Textarea
                       value={notesText}

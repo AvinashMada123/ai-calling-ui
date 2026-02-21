@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { PhoneOff, ExternalLink, Headphones } from "lucide-react";
+import { PhoneOff, ExternalLink, Headphones, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import {
   Table,
@@ -17,6 +18,8 @@ import { CallStatusBadge } from "@/components/shared/status-badge";
 import { EmptyState } from "@/components/shared/empty-state";
 import { CallDetailModal } from "@/components/calls/call-detail-modal";
 import { useCalls } from "@/hooks/use-calls";
+import { useCallsContext } from "@/context/calls-context";
+import { useAuthContext } from "@/context/auth-context";
 import { timeAgo, formatPhoneNumber, cn } from "@/lib/utils";
 import type { CallRecord } from "@/types/call";
 
@@ -28,7 +31,29 @@ const interestColors: Record<string, string> = {
 
 export function CallHistoryTable() {
   const { calls } = useCalls();
+  const { dispatch } = useCallsContext();
+  const { user } = useAuthContext();
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const handleRefresh = async () => {
+    if (!user) return;
+    setRefreshing(true);
+    try {
+      const token = await user.getIdToken();
+      const res = await fetch("/api/data/calls", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        dispatch({ type: "SET_CALLS", payload: data.calls });
+      }
+    } catch {
+      // silently ignore
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const recentCalls = calls
     .slice()
@@ -38,8 +63,12 @@ export function CallHistoryTable() {
   return (
     <>
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between pb-4">
           <CardTitle>Call History</CardTitle>
+          <Button variant="outline" size="sm" onClick={handleRefresh} disabled={refreshing}>
+            <RefreshCw className={cn("h-3.5 w-3.5 mr-1.5", refreshing && "animate-spin")} />
+            {refreshing ? "Refreshing..." : "Refresh"}
+          </Button>
         </CardHeader>
         <CardContent>
           {recentCalls.length === 0 ? (
