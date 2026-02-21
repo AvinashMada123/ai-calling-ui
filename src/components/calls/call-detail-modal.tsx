@@ -287,15 +287,10 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                                 const isAgent = entry.role === "agent" || entry.role === "model" || entry.role === "assistant";
                                 let timeLabel = "—";
                                 if (entry.timestamp) {
-                                  try {
-                                    timeLabel = new Date(entry.timestamp).toLocaleTimeString([], {
-                                      hour: "2-digit",
-                                      minute: "2-digit",
-                                      second: "2-digit",
-                                    });
-                                  } catch {
-                                    timeLabel = entry.timestamp;
-                                  }
+                                  const d = new Date(entry.timestamp);
+                                  timeLabel = isNaN(d.getTime())
+                                    ? "—"
+                                    : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
                                 }
                                 return (
                                   <tr
