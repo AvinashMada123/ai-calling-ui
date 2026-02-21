@@ -2,7 +2,8 @@ import type { ApiCallPayload, ApiCallResponse } from "@/types/api";
 
 export async function triggerCall(
   payload: ApiCallPayload,
-  leadId?: string
+  leadId?: string,
+  authToken?: string
 ): Promise<ApiCallResponse> {
   // When a bot config is selected, strip context fields — the server resolves
   // them from the bot config's contextVariables.  Form fields are hidden so any
@@ -22,10 +23,16 @@ export async function triggerCall(
   }
 
   console.log("[triggerCall] Sending payload:", JSON.stringify(cleanPayload, null, 2));
+  console.log("[triggerCall] botConfigId:", cleanPayload.botConfigId, "authToken:", authToken ? "present" : "missing");
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (authToken) {
+    headers["Authorization"] = `Bearer ${authToken}`;
+  }
 
   const response = await fetch("/api/call", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({ payload: cleanPayload }),
   });
 

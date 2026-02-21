@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAuthenticatedUser } from "@/lib/auth-helpers";
-import { query, queryOne } from "@/lib/db";
+import { query, queryOne, getUidAndOrgFromToken } from "@/lib/db";
 
 const CALL_SERVER_URL =
   process.env.CALL_SERVER_URL ||
@@ -31,10 +31,32 @@ function transformBotConfig(config: any) {
 
 export async function POST(request: NextRequest) {
   try {
-    const authUser = await getAuthenticatedUser(request);
+    // Support both Bearer token (preferred, always fresh) and session cookie (fallback)
+    let orgId = "";
+    const authHeader = request.headers.get("Authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      try {
+        const result = await getUidAndOrgFromToken(request);
+        if (!(result instanceof NextResponse)) {
+          orgId = result.orgId;
+          console.log("[API /api/call] Authenticated via Bearer token, orgId:", orgId);
+        }
+      } catch (err) {
+        console.warn("[API /api/call] Bearer token auth failed:", err);
+      }
+    }
+    if (!orgId) {
+      const authUser = await getAuthenticatedUser(request);
+      orgId = authUser?.orgId || "";
+      if (orgId) {
+        console.log("[API /api/call] Authenticated via session cookie, orgId:", orgId);
+      } else {
+        console.warn("[API /api/call] No valid auth found — bot config will not be resolved");
+      }
+    }
+
     const body = await request.json();
     const { payload } = body;
-    const orgId = authUser?.orgId || "";
 
     // Resolve bot config from PostgreSQL
     let botConfigPayload = {};
@@ -44,10 +66,16 @@ export async function POST(request: NextRequest) {
     if (orgId) {
       // Try specific config if botConfigId provided
       if (payload.botConfigId) {
+        console.log(`[API /api/call] Looking up botConfigId: ${payload.botConfigId} for org: ${orgId}`);
         configDoc = await queryOne(
           "SELECT * FROM bot_configs WHERE id = $1 AND org_id = $2",
           [payload.botConfigId, orgId]
         );
+        if (configDoc) {
+          console.log(`[API /api/call] Found requested config: "${configDoc.name}" (id: ${configDoc.id})`);
+        } else {
+          console.warn(`[API /api/call] botConfigId ${payload.botConfigId} not found for org ${orgId} — falling back to active config`);
+        }
       }
 
       // Fall back to active config
@@ -56,6 +84,11 @@ export async function POST(request: NextRequest) {
           "SELECT * FROM bot_configs WHERE org_id = $1 AND is_active = true LIMIT 1",
           [orgId]
         );
+        if (configDoc) {
+          console.log(`[API /api/call] Using active config: "${configDoc.name}" (id: ${configDoc.id})`);
+        } else {
+          console.warn(`[API /api/call] No active config found for org ${orgId}`);
+        }
       }
 
       if (configDoc) {
@@ -228,6 +261,11 @@ export async function POST(request: NextRequest) {
         payloadSentToCallServer: callServerPayload,
         resolvedContext: context,
         botConfigFound: !!configDoc,
+        requestedBotConfigId: payload.botConfigId || null,
+        resolvedConfigId: configDoc?.id || null,
+        resolvedConfigName: configDoc?.name || null,
+        usedFallback: !!payload.botConfigId && configDoc?.id !== payload.botConfigId,
+        authMethod: authHeader?.startsWith("Bearer ") ? "bearer" : "cookie",
         contextVarsFromDb: ctx,
       },
     });

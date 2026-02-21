@@ -2,6 +2,7 @@
 
 import { useMemo, useEffect, useRef, useCallback } from "react";
 import { useCallsContext } from "@/context/calls-context";
+import { useAuthContext } from "@/context/auth-context";
 import { triggerCall, hangupCall } from "@/lib/api";
 import { generateId } from "@/lib/utils";
 import type { CallRequest, CallRecord, CallStatus, CallResponse, CallEndedData } from "@/types/call";
@@ -11,6 +12,7 @@ const POLL_INTERVAL_MS = 5000;
 
 export function useCalls() {
   const { state, dispatch } = useCallsContext();
+  const { user } = useAuthContext();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Track which call UUIDs have already shown a toast — prevents duplicate notifications
   const notifiedRef = useRef<Set<string>>(new Set());
@@ -145,7 +147,8 @@ export function useCalls() {
     dispatch({ type: "SET_ACTIVE_CALL", payload: callRecord });
 
     try {
-      const response = await triggerCall(request, leadId);
+      const authToken = user ? await user.getIdToken() : undefined;
+      const response = await triggerCall(request, leadId, authToken);
       dispatch({
         type: "UPDATE_CALL",
         payload: {
