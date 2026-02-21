@@ -30,7 +30,10 @@ export function CallHistoryTable() {
   const { calls } = useCalls();
   const [selectedCall, setSelectedCall] = useState<CallRecord | null>(null);
 
-  const recentCalls = calls.slice(0, 20);
+  const recentCalls = calls
+    .slice()
+    .sort((a, b) => new Date(b.initiatedAt).getTime() - new Date(a.initiatedAt).getTime())
+    .slice(0, 50);
 
   return (
     <>
