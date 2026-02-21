@@ -363,6 +363,50 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                             </div>
                           );
                         })()
+                      ) : data.question_pairs && data.question_pairs.length > 0 ? (
+                        // Fallback: reconstruct conversation from question_pairs
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground italic mb-3">Reconstructed from question/response pairs</p>
+                          <div className="rounded-lg border overflow-hidden">
+                            <table className="w-full text-sm border-collapse">
+                              <thead>
+                                <tr className="border-b bg-muted/50">
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-8 font-medium">#</th>
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 w-28 font-medium">Speaker</th>
+                                  <th className="text-left text-[10px] uppercase tracking-wider text-muted-foreground px-3 py-2 font-medium">Message</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {data.question_pairs.flatMap((pair, i) => {
+                                  const rows = [];
+                                  if (pair.agent_said) {
+                                    rows.push(
+                                      <tr key={`a-${i}`} className="border-b align-top bg-background">
+                                        <td className="px-3 py-2.5 text-xs text-muted-foreground">{i * 2 + 1}</td>
+                                        <td className="px-3 py-2.5">
+                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-primary/10 text-primary">Agent</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-sm leading-relaxed">{pair.agent_said}</td>
+                                      </tr>
+                                    );
+                                  }
+                                  if (pair.user_said) {
+                                    rows.push(
+                                      <tr key={`u-${i}`} className="border-b last:border-0 align-top bg-muted/20">
+                                        <td className="px-3 py-2.5 text-xs text-muted-foreground">{i * 2 + 2}</td>
+                                        <td className="px-3 py-2.5">
+                                          <span className="inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-medium bg-muted text-muted-foreground border border-border">Customer</span>
+                                        </td>
+                                        <td className="px-3 py-2.5 text-sm leading-relaxed">{pair.user_said}</td>
+                                      </tr>
+                                    );
+                                  }
+                                  return rows;
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
                       ) : (
                         <p className="text-sm text-muted-foreground">No transcript available.</p>
                       )}
