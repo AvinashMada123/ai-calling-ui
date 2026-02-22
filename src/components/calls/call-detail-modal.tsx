@@ -73,7 +73,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
 
   if (!call) return null;
 
-  const data = call.endedData;
+  const data = call.endedData || null;
   const tabs: { id: Tab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "summary", label: "Summary", icon: FileText },
     { id: "qualification", label: "Qualification", icon: Target },
@@ -112,9 +112,9 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
               className="space-y-3 mt-4"
             >
               <div className="grid grid-cols-3 gap-3">
-                <MetricCard icon={Clock} label="Duration" value={data.duration_seconds} unit="s" />
-                <MetricCard icon={Activity} label="Completion" value={`${Math.round(data.completion_rate > 1 ? data.completion_rate : data.completion_rate * 100)}%`} />
-                <MetricCard icon={MessageSquare} label="Questions" value={`${data.questions_completed}/${data.total_questions}`} />
+                <MetricCard icon={Clock} label="Duration" value={data.duration_seconds || 0} unit="s" />
+                <MetricCard icon={Activity} label="Completion" value={`${Math.round((typeof data.completion_rate === 'number' ? (data.completion_rate > 1 ? data.completion_rate : data.completion_rate * 100) : 0))}%`} />
+                <MetricCard icon={MessageSquare} label="Questions" value={`${data.questions_completed || 0}/${data.total_questions || 0}`} />
               </div>
               {call.status === "completed" && call.callUuid && (
                 <div className="rounded-lg border bg-muted/30 p-3">
