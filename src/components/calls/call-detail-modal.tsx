@@ -234,7 +234,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                         </div>
                       )}
 
-                      {data.objections_raised.length > 0 && (
+                      {data.objections_raised && Array.isArray(data.objections_raised) && data.objections_raised.length > 0 && (
                         <div>
                           <h4 className="text-sm font-semibold mb-2 flex items-center gap-1.5">
                             <AlertTriangle className="h-3.5 w-3.5 text-amber-400" />
@@ -251,7 +251,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                         </div>
                       )}
 
-                      {Object.keys(data.collected_responses).length > 0 && (
+                      {data.collected_responses && typeof data.collected_responses === 'object' && Object.keys(data.collected_responses).length > 0 && (
                         <div>
                           <h4 className="text-sm font-semibold mb-2">Collected Responses</h4>
                           <div className="space-y-2">
@@ -696,7 +696,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                         !data.triggered_product_sections?.length &&
                         !data.social_proof_used &&
                         !data.question_pairs?.length &&
-                        Object.keys(data.collected_responses).length === 0 && (
+                        (!data.collected_responses || typeof data.collected_responses !== 'object' || Object.keys(data.collected_responses).length === 0) && (
                           <div className="text-center py-8 text-sm text-muted-foreground">
                             <Brain className="h-10 w-10 mx-auto mb-3 opacity-30" />
                             <p>No intelligence data available for this call.</p>
