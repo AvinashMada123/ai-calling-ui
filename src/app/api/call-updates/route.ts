@@ -174,6 +174,7 @@ export async function GET(request: NextRequest) {
                   },
                   transcript: call.transcript || "",
                   recording_url: `/api/calls/${call.call_uuid}/recording`,
+                  triggered_persona: call.triggered_persona || call.persona || undefined,
                 } as CallEndedData,
                 receivedAt: new Date().toISOString(),
               });
