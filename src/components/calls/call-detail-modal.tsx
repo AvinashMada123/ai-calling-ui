@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -88,9 +89,9 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               <DialogTitle className="text-xl truncate">{call.request.contactName}</DialogTitle>
-              <p className="text-sm text-muted-foreground mt-1">
+              <DialogDescription className="text-sm text-muted-foreground mt-1">
                 {formatPhoneNumber(call.request.phoneNumber)}
-              </p>
+              </DialogDescription>
             </div>
             <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
               {data?.qualification && (
@@ -186,7 +187,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                             <div className="rounded-md border bg-background/60 p-3">
                               <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Persona</p>
-                              {data.triggered_persona ? (
+                              {data.triggered_persona && typeof data.triggered_persona === 'string' ? (
                                 <Badge className="bg-purple-500/15 text-purple-400 border-purple-500/20 text-xs">
                                   {data.triggered_persona.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
                                 </Badge>
@@ -626,7 +627,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                             AI Behaviour Triggers
                           </h4>
                           <div className="space-y-3">
-                            {data.triggered_persona && (
+                            {data.triggered_persona && typeof data.triggered_persona === 'string' && (
                               <div className="rounded-lg border p-3">
                                 <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Detected Persona</p>
                                 <Badge className="bg-purple-500/10 text-purple-400 border-purple-500/20">
