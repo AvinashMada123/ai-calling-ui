@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
     // Build context: bot config context variables take priority (form fields are
     // hidden when a bot config is selected, so payload values are stale defaults)
     const ctx = configDoc?.contextVariables || {};
-    const context = {
+    const context: Record<string, string> = {
       customer_name: payload.contactName || "Customer",
       agent_name: ctx.agentName || payload.agentName || "Agent",
       company_name: ctx.companyName || payload.companyName || "",
@@ -77,6 +77,13 @@ export async function POST(request: NextRequest) {
       event_host: ctx.eventHost || payload.eventHost || "",
       location: ctx.location || payload.location || "",
     };
+
+    // Merge custom variables into context (they go as top-level keys)
+    if (ctx.customVariables && typeof ctx.customVariables === "object") {
+      for (const [k, v] of Object.entries(ctx.customVariables)) {
+        if (k && typeof v === "string") context[k] = v;
+      }
+    }
 
     // Determine the public URL for the call-ended callback.
     // Encode orgId in the URL so we don't depend on the call server passing it
@@ -108,6 +115,9 @@ export async function POST(request: NextRequest) {
     // Build payload matching the exact format the call server expects.
     // orgId is included so the call server can pass it back in the call-ended
     // callback, allowing /api/call-ended to update the correct org in Firestore.
+    // Voice: bot config voice overrides form voice selection
+    const voice = configDoc?.voice || payload.voice;
+
     const callServerPayload: Record<string, unknown> = {
       phoneNumber: payload.phoneNumber,
       contactName: payload.contactName || "Customer",
@@ -117,6 +127,7 @@ export async function POST(request: NextRequest) {
       callEndWebhookUrl,
       context,
       ...botConfigPayload,
+      ...(voice ? { voice } : {}),
     };
 
     if (ghlWhatsappWebhookUrl) {

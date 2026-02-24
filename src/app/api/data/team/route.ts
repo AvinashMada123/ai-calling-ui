@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/lib/firebase-admin";
+import { sendInviteEmail } from "@/lib/email";
 
 async function getOrgId(request: NextRequest): Promise<{ orgId: string; uid: string } | NextResponse> {
   const authHeader = request.headers.get("Authorization");
@@ -68,7 +69,30 @@ export async function POST(request: NextRequest) {
           expiresAt: expiresAt.toISOString(),
         });
 
-        return NextResponse.json({ success: true, inviteId });
+        // Send invite email (best-effort — don't fail if email isn't configured)
+        const host = request.headers.get("host") || "localhost:3000";
+        const protocol = host.includes("localhost") ? "http" : "https";
+        const inviteUrl = `${protocol}://${host}/invite/${inviteId}`;
+
+        // Get inviter's email for context
+        const inviterDoc = await db.collection("users").doc(uid).get();
+        const inviterEmail = inviterDoc.exists ? inviterDoc.data()?.email : undefined;
+
+        let emailSent = false;
+        try {
+          const result = await sendInviteEmail({
+            to: email.trim().toLowerCase(),
+            orgName,
+            role,
+            inviteUrl,
+            invitedByEmail: inviterEmail,
+          });
+          emailSent = result.sent;
+        } catch (emailError) {
+          console.warn("[Team API] Failed to send invite email:", emailError);
+        }
+
+        return NextResponse.json({ success: true, inviteId, emailSent, inviteUrl });
       }
 
       default:

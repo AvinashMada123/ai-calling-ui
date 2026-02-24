@@ -8,6 +8,27 @@ const FWAI_BACKEND_URL =
   (process.env.CALL_SERVER_URL || "http://34.93.142.172:3005/call/conversational")
     .replace(/\/call\/conversational$/, "");
 
+// Rate-limit backend polling per UUID (30s cooldown)
+const POLL_COOLDOWN_MS = 30_000;
+const pollCooldownMap = new Map<string, number>();
+
+function canPollUuid(uuid: string): boolean {
+  const last = pollCooldownMap.get(uuid);
+  if (last && Date.now() - last < POLL_COOLDOWN_MS) return false;
+  pollCooldownMap.set(uuid, Date.now());
+  return true;
+}
+
+// Prune entries older than 5 minutes every 100 calls
+let pruneCounter = 0;
+function maybePrune() {
+  if (++pruneCounter % 100 !== 0) return;
+  const cutoff = Date.now() - 5 * 60_000;
+  for (const [uuid, ts] of pollCooldownMap) {
+    if (ts < cutoff) pollCooldownMap.delete(uuid);
+  }
+}
+
 export async function GET(request: NextRequest) {
   const authUser = await getAuthenticatedUser(request);
   const orgId = authUser?.orgId || "";
@@ -61,13 +82,54 @@ export async function GET(request: NextRequest) {
   }
 
   // Source 3: Poll FWAI backend directly for any still-unresolved UUIDs
+  maybePrune();
   const stillUnresolved = callUuids.filter((u) => !resolvedUuids.has(u));
   if (stillUnresolved.length > 0) {
     await Promise.all(
       stillUnresolved.map(async (uuid) => {
+        // Rate-limit: skip if we polled this UUID within the cooldown window
+        if (!canPollUuid(uuid)) {
+          errors.push(`${uuid}: cooldown (skipped)`);
+          return;
+        }
         const url = `${FWAI_BACKEND_URL}/calls/${uuid}/status`;
         try {
           const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+          if (res.status === 404) {
+            // Backend doesn't know this UUID — synthesize a completed result so frontend stops polling
+            const syntheticData: CallEndedData = {
+              call_uuid: uuid,
+              caller_phone: "",
+              contact_name: "",
+              client_name: "",
+              duration_seconds: 0,
+              timestamp: new Date().toISOString(),
+              questions_completed: 0,
+              total_questions: 0,
+              completion_rate: 0,
+              interest_level: "Low",
+              call_summary: "Call data unavailable — the backend has no record of this call.",
+              objections_raised: [],
+              collected_responses: {},
+              question_pairs: [],
+              call_metrics: {
+                questions_completed: 0,
+                total_duration_s: 0,
+                avg_latency_ms: 0,
+                p90_latency_ms: 0,
+                min_latency_ms: 0,
+                max_latency_ms: 0,
+                total_nudges: 0,
+              },
+              transcript: "",
+            };
+            pendingUpdates.push({
+              callUuid: uuid,
+              data: syntheticData,
+              receivedAt: new Date().toISOString(),
+            });
+            return;
+          }
           if (!res.ok) {
             errors.push(`${uuid}: HTTP ${res.status}`);
             return;

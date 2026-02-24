@@ -11,6 +11,7 @@ import {
   GripVertical,
   Loader2,
   Info,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -62,6 +63,7 @@ export default function BotConfigEditorPage() {
   const [questions, setQuestions] = useState<BotQuestion[]>([]);
   const [objections, setObjections] = useState<BotObjection[]>([]);
   const [contextVariables, setContextVariables] = useState<BotContextVariables>({});
+  const [voice, setVoice] = useState("");
   const hasLoadedRef = useRef(false);
 
   const populateConfig = useCallback((found: BotConfig) => {
@@ -71,6 +73,7 @@ export default function BotConfigEditorPage() {
     setQuestions([...found.questions].sort((a, b) => a.order - b.order));
     setObjections([...found.objections]);
     setContextVariables(found.contextVariables || {});
+    setVoice(found.voice || "");
     setLoading(false);
     hasLoadedRef.current = true;
   }, []);
@@ -129,6 +132,7 @@ export default function BotConfigEditorPage() {
           objections,
           objectionKeywords,
           contextVariables,
+          voice,
         },
       });
       toast.success("Configuration saved successfully");
@@ -270,6 +274,8 @@ export default function BotConfigEditorPage() {
           <ContextTab
             contextVariables={contextVariables}
             onContextChange={setContextVariables}
+            voice={voice}
+            onVoiceChange={setVoice}
           />
         )}
         {activeTab === "questions" && (
@@ -344,14 +350,24 @@ function PromptTab({
 }
 
 /* ========== Context Tab ========== */
+const VOICE_OPTIONS = [
+  { value: "", label: "Auto-detect from prompt" },
+  { value: "Puck", label: "Puck (Male)" },
+  { value: "Kore", label: "Kore (Female)" },
+];
+
 function ContextTab({
   contextVariables,
   onContextChange,
+  voice,
+  onVoiceChange,
 }: {
   contextVariables: BotContextVariables;
   onContextChange: (v: BotContextVariables) => void;
+  voice: string;
+  onVoiceChange: (v: string) => void;
 }) {
-  const fields: { key: keyof BotContextVariables; label: string; placeholder: string; variable: string }[] = [
+  const fields: { key: Exclude<keyof BotContextVariables, "customVariables">; label: string; placeholder: string; variable: string }[] = [
     { key: "agentName", label: "Agent Name", placeholder: "e.g. Priya", variable: "{agent_name}" },
     { key: "companyName", label: "Company Name", placeholder: "e.g. FutureWorks AI", variable: "{company_name}" },
     { key: "eventName", label: "Event Name", placeholder: "e.g. AI Masterclass", variable: "{event_name}" },
@@ -359,37 +375,131 @@ function ContextTab({
     { key: "location", label: "Location", placeholder: "e.g. Hyderabad", variable: "{location}" },
   ];
 
+  const customVars = contextVariables.customVariables || {};
+
+  function addCustomVar() {
+    const key = `custom_${Date.now()}`;
+    onContextChange({
+      ...contextVariables,
+      customVariables: { ...customVars, [key]: "" },
+    });
+  }
+
+  function updateCustomVar(oldKey: string, newKey: string, value: string) {
+    const updated = { ...customVars };
+    if (oldKey !== newKey) delete updated[oldKey];
+    updated[newKey] = value;
+    onContextChange({ ...contextVariables, customVariables: updated });
+  }
+
+  function removeCustomVar(key: string) {
+    const updated = { ...customVars };
+    delete updated[key];
+    onContextChange({ ...contextVariables, customVariables: updated });
+  }
+
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Context Variables</CardTitle>
-        <p className="text-sm text-muted-foreground">
-          These values replace the {"{variable}"} placeholders in your prompt and questions.
-          When set here, callers won&apos;t need to fill them in the call form.
-        </p>
-      </CardHeader>
-      <CardContent>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {fields.map((f) => (
-            <div key={f.key} className="space-y-1.5">
-              <Label className="text-sm">
-                {f.label}
-                <Badge variant="secondary" className="ml-2 font-mono text-xs">
-                  {f.variable}
-                </Badge>
-              </Label>
-              <Input
-                value={contextVariables[f.key] || ""}
-                onChange={(e) =>
-                  onContextChange({ ...contextVariables, [f.key]: e.target.value })
-                }
-                placeholder={f.placeholder}
-              />
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>Voice</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Choose the AI voice for calls using this configuration. Overrides the voice selected in the call form.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <select
+            value={voice}
+            onChange={(e) => onVoiceChange(e.target.value)}
+            className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+          >
+            {VOICE_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Context Variables</CardTitle>
+          <p className="text-sm text-muted-foreground">
+            These values replace the {"{variable}"} placeholders in your prompt and questions.
+            When set here, callers won&apos;t need to fill them in the call form.
+          </p>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {fields.map((f) => (
+              <div key={f.key} className="space-y-1.5">
+                <Label className="text-sm">
+                  {f.label}
+                  <Badge variant="secondary" className="ml-2 font-mono text-xs">
+                    {f.variable}
+                  </Badge>
+                </Label>
+                <Input
+                  value={contextVariables[f.key] || ""}
+                  onChange={(e) =>
+                    onContextChange({ ...contextVariables, [f.key]: e.target.value })
+                  }
+                  placeholder={f.placeholder}
+                />
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Custom Variables</CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Add your own key–value variables. These are sent to the backend as extra context.
+              </p>
             </div>
-          ))}
-        </div>
-      </CardContent>
-    </Card>
+            <Button variant="outline" size="sm" onClick={addCustomVar}>
+              <Plus className="size-4" />
+              Add Variable
+            </Button>
+          </div>
+        </CardHeader>
+        {Object.keys(customVars).length > 0 && (
+          <CardContent>
+            <div className="space-y-3">
+              {Object.entries(customVars).map(([key, value]) => (
+                <div key={key} className="flex items-center gap-2">
+                  <Input
+                    value={key}
+                    onChange={(e) => updateCustomVar(key, e.target.value, value)}
+                    placeholder="variable_name"
+                    className="flex-1 font-mono text-sm"
+                  />
+                  <Input
+                    value={value}
+                    onChange={(e) => updateCustomVar(key, key, e.target.value)}
+                    placeholder="value"
+                    className="flex-1 text-sm"
+                  />
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-destructive hover:text-destructive shrink-0"
+                    onClick={() => removeCustomVar(key)}
+                  >
+                    <X className="size-4" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        )}
+      </Card>
+    </div>
   );
 }
 

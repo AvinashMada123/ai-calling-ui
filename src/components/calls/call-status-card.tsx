@@ -1,11 +1,12 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { Phone, PhoneOff, PhoneMissed } from "lucide-react";
+import { Phone, PhoneOff, PhoneMissed, PhoneForwarded } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CallStatusBadge } from "@/components/shared/status-badge";
 import { useCalls } from "@/hooks/use-calls";
+import { hangupCall } from "@/lib/api";
 import { formatPhoneNumber } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 import type { CallStatus } from "@/types/call";
@@ -104,7 +105,21 @@ export function CallStatusCard() {
 
               {(activeCall.status === "initiating" ||
                 activeCall.status === "in-progress") && (
-                <div className="mt-4 flex gap-2">
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="border-red-600/40 bg-red-500/10 text-red-500 hover:bg-red-500/20 hover:text-red-400"
+                    onClick={async () => {
+                      if (activeCall.callUuid) {
+                        await hangupCall(activeCall.callUuid);
+                      }
+                      updateCallStatus(activeCall.id, "failed");
+                    }}
+                  >
+                    <PhoneForwarded className="mr-1 h-3.5 w-3.5" />
+                    Hang Up
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"

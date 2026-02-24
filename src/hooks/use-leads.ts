@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import { useLeadsContext } from "@/context/leads-context";
+import { useAuth } from "@/hooks/use-auth";
 import type { Lead, LeadFilters } from "@/types/lead";
 import { ITEMS_PER_PAGE } from "@/lib/constants";
 import { generateId } from "@/lib/utils";
 
 export function useLeads() {
   const { state, dispatch } = useLeadsContext();
+  const { user } = useAuth();
   const [page, setPage] = useState(1);
 
   const filteredLeads = useMemo(() => {
@@ -91,6 +93,22 @@ export function useLeads() {
     incrementCallCount: (id: string) => {
       dispatch({ type: "INCREMENT_CALL_COUNT", payload: id });
     },
+
+    refreshLeads: useCallback(async () => {
+      if (!user) return;
+      try {
+        const idToken = await user.getIdToken();
+        const res = await fetch("/api/data/leads", {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          dispatch({ type: "SET_LEADS", payload: data.leads });
+        }
+      } catch {
+        // Silently ignore refresh errors
+      }
+    }, [user, dispatch]),
 
     totalLeads: state.leads.length,
     newLeads: state.leads.filter((l) => l.status === "new").length,

@@ -2,7 +2,7 @@
 
 import { useMemo, useEffect, useRef, useCallback } from "react";
 import { useCallsContext } from "@/context/calls-context";
-import { triggerCall } from "@/lib/api";
+import { triggerCall, hangupCall } from "@/lib/api";
 import { generateId } from "@/lib/utils";
 import type { CallRequest, CallRecord, CallStatus, CallResponse, CallEndedData } from "@/types/call";
 import { toast } from "sonner";
@@ -12,6 +12,7 @@ const POLL_INTERVAL_MS = 3000;
 export function useCalls() {
   const { state, dispatch } = useCallsContext();
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const notifiedRef = useRef<Set<string>>(new Set());
 
   const hasActiveCalls = useMemo(
     () => state.calls.some((c) => c.status === "initiating" || c.status === "in-progress"),
@@ -23,12 +24,21 @@ export function useCalls() {
       const match = state.calls.find((c) => c.callUuid === data.call_uuid);
       if (!match) return;
 
+      // Skip if call is already in a terminal state
+      if (match.status === "completed" || match.status === "failed" || match.status === "no-answer") return;
+
+      // Detect no-answer: duration 0 and generic/empty summary
+      const isNoAnswer =
+        data.duration_seconds === 0 &&
+        (!data.call_summary || data.call_summary.startsWith("Call data unavailable"));
+      const finalStatus: CallStatus = isNoAnswer ? "no-answer" : "completed";
+
       dispatch({
         type: "UPDATE_CALL",
         payload: {
           id: match.id,
           updates: {
-            status: "completed" as CallStatus,
+            status: finalStatus,
             endedData: data,
             durationSeconds: data.duration_seconds,
             interestLevel: data.interest_level,
@@ -42,9 +52,19 @@ export function useCalls() {
         dispatch({ type: "CLEAR_ACTIVE_CALL" });
       }
 
-      toast.success("Call completed!", {
-        description: `${data.contact_name} — ${data.duration_seconds}s, Interest: ${data.interest_level}`,
-      });
+      // Only show toast once per UUID
+      if (!notifiedRef.current.has(data.call_uuid)) {
+        notifiedRef.current.add(data.call_uuid);
+        if (isNoAnswer) {
+          toast.info("Call ended — no answer", {
+            description: `${data.contact_name || match.request.contactName}`,
+          });
+        } else {
+          toast.success("Call completed!", {
+            description: `${data.contact_name} — ${data.duration_seconds}s, Interest: ${data.interest_level}`,
+          });
+        }
+      }
     },
     [state.calls, state.activeCall, dispatch]
   );
@@ -157,12 +177,19 @@ export function useCalls() {
   };
 
   const updateCallStatus = (callId: string, status: CallStatus) => {
+    // Find the call to get its UUID for backend hangup
+    const call = state.calls.find((c) => c.id === callId);
+
     dispatch({
       type: "UPDATE_CALL",
       payload: { id: callId, updates: { status } },
     });
     if (status === "completed" || status === "failed" || status === "no-answer") {
       dispatch({ type: "CLEAR_ACTIVE_CALL" });
+      // Best-effort: notify backend to hang up the Plivo call
+      if (call?.callUuid) {
+        hangupCall(call.callUuid);
+      }
     }
   };
 

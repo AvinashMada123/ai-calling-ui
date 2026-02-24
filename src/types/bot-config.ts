@@ -18,6 +18,7 @@ export interface BotContextVariables {
   eventName?: string;
   eventHost?: string;
   location?: string;
+  customVariables?: Record<string, string>;
 }
 
 export interface BotConfig {
@@ -29,6 +30,7 @@ export interface BotConfig {
   objections: BotObjection[];
   objectionKeywords: Record<string, string[]>;
   contextVariables?: BotContextVariables;
+  voice?: string;
   qualificationCriteria: {
     hot: string;
     warm: string;

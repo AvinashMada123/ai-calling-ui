@@ -34,3 +34,15 @@ export async function triggerCall(
 
   return data;
 }
+
+export async function hangupCall(callUuid: string): Promise<void> {
+  try {
+    await fetch("/api/call-hangup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callUuid }),
+    });
+  } catch {
+    // Best-effort: don't fail if backend is unreachable
+  }
+}

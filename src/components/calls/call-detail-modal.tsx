@@ -9,8 +9,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Progress } from "@/components/ui/progress";
 import {
   Clock,
@@ -26,7 +24,7 @@ import {
   Timer,
   Target,
 } from "lucide-react";
-import type { CallRecord } from "@/types/call";
+import type { CallRecord, CallEndedData } from "@/types/call";
 import { CallStatusBadge } from "@/components/shared/status-badge";
 import { QualificationBadge } from "@/components/shared/qualification-badge";
 import { formatPhoneNumber, formatDate } from "@/lib/utils";
@@ -125,7 +123,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                     controls
                     className="w-full h-8"
                     src={`/api/calls/${call.callUuid}/recording`}
-                    preload="none"
+                    preload="metadata"
                   />
                 </div>
               )}
@@ -159,7 +157,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
               ))}
             </div>
 
-            <ScrollArea className="flex-1 min-h-0">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <AnimatePresence mode="wait">
                 <motion.div
                   key={activeTab}
@@ -212,14 +210,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                   )}
 
                   {activeTab === "transcript" && (
-                    <div className="space-y-3">
-                      <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
-                      <div className="rounded-lg border bg-muted/20 p-4">
-                        <pre className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed font-sans">
-                          {data.transcript}
-                        </pre>
-                      </div>
-                    </div>
+                    <TranscriptTab data={data} />
                   )}
 
                   {activeTab === "qa" && (
@@ -402,7 +393,7 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
                   )}
                 </motion.div>
               </AnimatePresence>
-            </ScrollArea>
+            </div>
           </>
         ) : (
           <div className="p-6 text-center text-sm text-muted-foreground">
@@ -412,5 +403,143 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+/* ========== Transcript Tab with 3-level fallback ========== */
+function SpeakerBadge({ role }: { role: string }) {
+  const isAgent = /agent|bot|ai/i.test(role);
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        "text-[10px] shrink-0",
+        isAgent
+          ? "bg-primary/10 text-primary border-primary/20"
+          : "bg-muted text-muted-foreground border-border"
+      )}
+    >
+      {isAgent ? "Agent" : "User"}
+    </Badge>
+  );
+}
+
+function TranscriptTab({ data }: { data: CallEndedData }) {
+  // Level 1: structured transcript_entries from backend
+  if (data.transcript_entries && data.transcript_entries.length > 0) {
+    return (
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
+        <div className="rounded-lg border bg-muted/20 overflow-hidden">
+          <table className="w-full text-sm">
+            <tbody>
+              {data.transcript_entries.map((entry, i) => (
+                <tr key={i} className="border-b last:border-b-0">
+                  <td className="px-3 py-2 align-top w-16">
+                    <SpeakerBadge role={entry.role} />
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground leading-relaxed">
+                    {entry.text}
+                  </td>
+                  {entry.timestamp && (
+                    <td className="px-3 py-2 align-top text-xs text-muted-foreground/60 whitespace-nowrap w-16">
+                      {entry.timestamp}
+                    </td>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // Level 2: parse raw transcript text for Agent:/User: lines
+  if (data.transcript) {
+    const lines = data.transcript.split("\n").filter((l) => l.trim());
+    const parsed = lines.map((line) => {
+      const match = line.match(/^(Agent|User|Bot|AI|Human)\s*:\s*(.*)/i);
+      if (match) return { role: match[1], text: match[2] };
+      return { role: "", text: line };
+    });
+    const hasRoles = parsed.some((p) => p.role);
+
+    if (hasRoles) {
+      return (
+        <div className="space-y-3">
+          <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
+          <div className="rounded-lg border bg-muted/20 overflow-hidden">
+            <table className="w-full text-sm">
+              <tbody>
+                {parsed.map((entry, i) => (
+                  <tr key={i} className="border-b last:border-b-0">
+                    <td className="px-3 py-2 align-top w-16">
+                      {entry.role ? <SpeakerBadge role={entry.role} /> : null}
+                    </td>
+                    <td className="px-3 py-2 text-muted-foreground leading-relaxed">
+                      {entry.text}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // No speaker prefixes — render as plain text
+    return (
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
+        <div className="rounded-lg border bg-muted/20 p-4">
+          <pre className="text-sm text-muted-foreground whitespace-pre-wrap leading-relaxed font-sans">
+            {data.transcript}
+          </pre>
+        </div>
+      </div>
+    );
+  }
+
+  // Level 3: reconstruct from question_pairs
+  if (data.question_pairs && data.question_pairs.length > 0) {
+    return (
+      <div className="space-y-3">
+        <h4 className="text-sm font-semibold mb-2">Transcript (from Q&A)</h4>
+        <div className="rounded-lg border bg-muted/20 overflow-hidden">
+          <table className="w-full text-sm">
+            <tbody>
+              {data.question_pairs.flatMap((qa) => [
+                <tr key={`${qa.question_id}-agent`} className="border-b">
+                  <td className="px-3 py-2 align-top w-16">
+                    <SpeakerBadge role="agent" />
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground leading-relaxed">
+                    {qa.agent_said}
+                  </td>
+                </tr>,
+                <tr key={`${qa.question_id}-user`} className="border-b last:border-b-0">
+                  <td className="px-3 py-2 align-top w-16">
+                    <SpeakerBadge role="user" />
+                  </td>
+                  <td className="px-3 py-2 text-muted-foreground leading-relaxed">
+                    {qa.user_said}
+                  </td>
+                </tr>,
+              ])}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback
+  return (
+    <div className="text-center py-8 text-sm text-muted-foreground">
+      <MessageSquare className="h-10 w-10 mx-auto mb-3 opacity-30" />
+      <p>No transcript available.</p>
+    </div>
   );
 }

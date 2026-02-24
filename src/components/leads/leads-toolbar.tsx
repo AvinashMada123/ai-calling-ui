@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Trash2, Phone } from "lucide-react";
+import { Search, Trash2, Phone, RefreshCw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import {
 import { useLeads } from "@/hooks/use-leads";
 import { useSettings } from "@/hooks/use-settings";
 import { useCalls } from "@/hooks/use-calls";
+import { useAuth } from "@/hooks/use-auth";
 import { BulkCallDialog } from "@/components/leads/bulk-call-dialog";
 import { toast } from "sonner";
 import type { LeadStatus } from "@/types/lead";
@@ -24,12 +25,14 @@ import type { CallRequest } from "@/types/call";
 const MAX_CONCURRENT = 5;
 
 export function LeadsToolbar() {
-  const { leads, filters, setFilters, selectedIds, deleteLeads, deselectAll, incrementCallCount } =
+  const { leads, filters, setFilters, selectedIds, deleteLeads, deselectAll, incrementCallCount, refreshLeads } =
     useLeads();
+  const { user } = useAuth();
   const { settings } = useSettings();
   const { initiateCall } = useCalls();
   const [searchValue, setSearchValue] = useState(filters.search);
   const [bulkCallOpen, setBulkCallOpen] = useState(false);
+  const [syncing, setSyncing] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -112,6 +115,33 @@ export function LeadsToolbar() {
     );
   }, [selectedLeads, settings.defaults, initiateCall, incrementCallCount, deselectAll]);
 
+  const handleGhlSync = async () => {
+    if (!user) return;
+    setSyncing(true);
+    try {
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/data/ghl-contacts", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ action: "sync" }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.message || "GHL sync failed");
+      } else {
+        toast.success(`GHL Sync: ${data.created} added, ${data.updated} updated`);
+        refreshLeads();
+      }
+    } catch {
+      toast.error("Failed to sync GHL contacts");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -159,8 +189,19 @@ export function LeadsToolbar() {
               <SelectItem value="manual">Manual</SelectItem>
               <SelectItem value="csv">CSV</SelectItem>
               <SelectItem value="excel">Excel</SelectItem>
+              <SelectItem value="ghl">GoHighLevel</SelectItem>
             </SelectContent>
           </Select>
+
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleGhlSync}
+            disabled={syncing}
+          >
+            <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${syncing ? "animate-spin" : ""}`} />
+            {syncing ? "Syncing..." : "Sync GHL"}
+          </Button>
         </div>
 
         <AnimatePresence>
