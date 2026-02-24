@@ -22,4 +22,6 @@ export interface AppSettings {
   ai: {
     autoQualify: boolean;
   };
+  ghlSyncEnabled?: boolean;
+  ghlLastSyncAt?: string;
 }
