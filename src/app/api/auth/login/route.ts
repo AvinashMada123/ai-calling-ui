@@ -29,9 +29,14 @@ export async function POST(request: NextRequest) {
     // Update last login (fire-and-forget)
     userRef.update({ lastLoginAt: new Date().toISOString() }).catch(() => {});
 
-    const profile = userDoc.exists
-      ? { uid: decoded.uid, ...userDoc.data() }
-      : null;
+    if (!userDoc.exists) {
+      return NextResponse.json(
+        { success: false, message: "Account setup incomplete. Please sign up or ask your admin to send an invite." },
+        { status: 403 }
+      );
+    }
+
+    const profile = { uid: decoded.uid, ...userDoc.data() };
 
     const response = NextResponse.json({ success: true, profile });
 

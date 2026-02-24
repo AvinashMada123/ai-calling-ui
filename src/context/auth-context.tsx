@@ -223,12 +223,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           initialized: true,
         });
       } else {
+        // fetchInit failed — try to get profile from login response
         const data = await loginRes.json();
-        setState({ user, userProfile: data.profile || null, initialData: null, loading: false, initialized: true });
+        const profile = data.profile || null;
+        if (!profile) {
+          // User exists in Firebase Auth but has no Firestore document.
+          // Sign them out to avoid a broken session and surface a clear error.
+          await firebaseSignOut(auth);
+          handledByAction.current = false;
+          setState({ user: null, userProfile: null, initialData: null, loading: false, initialized: true });
+          throw new Error(
+            "Account setup incomplete. Please ask your admin to invite you, or sign up again."
+          );
+        }
+        setState({ user, userProfile: profile, initialData: null, loading: false, initialized: true });
       }
     } catch (err) {
       handledByAction.current = false;
-      setState((prev) => ({ ...prev, loading: false }));
+      // Sign out the Firebase Auth user to prevent onAuthStateChanged from
+      // firing with a user that has no Firestore profile.
+      try { await firebaseSignOut(auth); } catch { /* ignore */ }
+      setState({ user: null, userProfile: null, initialData: null, loading: false, initialized: true });
       throw err;
     }
   }, []);
