@@ -5,7 +5,7 @@ import { getPendingUpdates } from "@/lib/call-updates-store";
 import type { CallEndedData } from "@/types/call";
 
 const FWAI_BACKEND_URL =
-  (process.env.CALL_SERVER_URL || "http://34.93.142.172:3001/call/conversational")
+  (process.env.CALL_SERVER_URL || "http://34.93.142.172:3005/call/conversational")
     .replace(/\/call\/conversational$/, "");
 
 export async function GET(request: NextRequest) {

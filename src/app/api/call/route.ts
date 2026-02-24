@@ -4,7 +4,7 @@ import { adminDb } from "@/lib/firebase-admin";
 
 const CALL_SERVER_URL =
   process.env.CALL_SERVER_URL ||
-  "http://34.93.142.172:3001/call/conversational";
+  "http://34.93.142.172:3005/call/conversational";
 
 const N8N_TRANSCRIPT_WEBHOOK_URL =
   process.env.N8N_TRANSCRIPT_WEBHOOK_URL ||

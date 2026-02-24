@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 const FWAI_BACKEND_URL =
   process.env.CALL_SERVER_URL?.replace(/\/call\/conversational$/, "") ||
-  "http://34.93.142.172:3001";
+  "http://34.93.142.172:3005";
 
 export async function GET(
   _request: NextRequest,
