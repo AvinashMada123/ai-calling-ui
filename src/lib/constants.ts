@@ -1,12 +1,11 @@
 import type { AppSettings } from "@/types/settings";
 
 export const VOICE_OPTIONS = [
-  { value: "Puck", label: "Puck", description: "Natural and conversational" },
-  { value: "Alloy", label: "Alloy", description: "Neutral and balanced" },
-  { value: "Echo", label: "Echo", description: "Warm and rounded" },
-  { value: "Nova", label: "Nova", description: "Friendly and upbeat" },
-  { value: "Shimmer", label: "Shimmer", description: "Clear and crisp" },
-  { value: "Onyx", label: "Onyx", description: "Deep and authoritative" },
+  { value: "Puck", label: "Puck", description: "Male — natural and conversational" },
+  { value: "Kore", label: "Kore", description: "Female — clear and professional" },
+  { value: "Charon", label: "Charon", description: "Male — calm and steady" },
+  { value: "Fenrir", label: "Fenrir", description: "Male — confident and direct" },
+  { value: "Aoede", label: "Aoede", description: "Female — warm and friendly" },
 ] as const;
 
 export const LEAD_STATUS_CONFIG = {

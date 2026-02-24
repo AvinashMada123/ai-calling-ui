@@ -354,6 +354,9 @@ const VOICE_OPTIONS = [
   { value: "", label: "Auto-detect from prompt" },
   { value: "Puck", label: "Puck (Male)" },
   { value: "Kore", label: "Kore (Female)" },
+  { value: "Charon", label: "Charon (Male)" },
+  { value: "Fenrir", label: "Fenrir (Male)" },
+  { value: "Aoede", label: "Aoede (Female)" },
 ];
 
 function ContextTab({
@@ -411,10 +414,10 @@ function ContextTab({
           <select
             value={voice}
             onChange={(e) => onVoiceChange(e.target.value)}
-            className="flex h-9 w-full max-w-xs rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="flex h-9 w-full max-w-xs rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             {VOICE_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
+              <option key={opt.value} value={opt.value} className="bg-background text-foreground">
                 {opt.label}
               </option>
             ))}
