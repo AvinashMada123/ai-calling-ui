@@ -26,7 +26,7 @@ import { toast } from "sonner";
 
 export default function LeadsPage() {
   const { totalLeads, refreshLeads } = useLeads();
-  const { settings, updateSettings } = useSettings();
+  const { settings, saveSettings } = useSettings();
   const { user } = useAuth();
   const [uploadOpen, setUploadOpen] = useState(false);
   const [addOpen, setAddOpen] = useState(false);
@@ -43,7 +43,7 @@ export default function LeadsPage() {
   const ghlSyncEnabled = settings.ghlSyncEnabled ?? false;
 
   const handleToggleGhlSync = async (checked: boolean) => {
-    await updateSettings({ ghlSyncEnabled: checked });
+    await saveSettings({ ghlSyncEnabled: checked });
   };
 
   // Fetch GHL tags when sync is enabled
@@ -117,7 +117,7 @@ export default function LeadsPage() {
       setTotalSynced(data.totalFetched || data.created + data.updated);
       if (data.totalFetched) setTotalInGHL(data.totalFetched);
 
-      updateSettings({ ghlLastSyncAt: new Date().toISOString() });
+      saveSettings({ ghlLastSyncAt: new Date().toISOString() });
       refreshLeads();
 
       toast.success(
@@ -130,7 +130,7 @@ export default function LeadsPage() {
     } finally {
       setSyncing(false);
     }
-  }, [user, updateSettings, refreshLeads, selectedGhlTag]);
+  }, [user, saveSettings, refreshLeads, selectedGhlTag]);
 
   return (
     <div className="space-y-6">

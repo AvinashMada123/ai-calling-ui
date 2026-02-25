@@ -201,19 +201,20 @@ function TeamContent() {
                 {members.map((member, index) => {
                   const role = roleConfig[member.role] ?? roleConfig.client_user;
                   const RoleIcon = role.icon;
+                  const status = member.status || "active";
                   return (
                     <motion.tr
-                      key={member.uid}
+                      key={member.uid || index}
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03 }}
                       className="hover:bg-muted/50 border-b transition-colors"
                     >
                       <TableCell className="font-medium">
-                        {member.displayName}
+                        {member.displayName || "—"}
                       </TableCell>
                       <TableCell className="text-muted-foreground">
-                        {member.email}
+                        {member.email || "—"}
                       </TableCell>
                       <TableCell>
                         <Badge className={role.color}>
@@ -222,10 +223,10 @@ function TeamContent() {
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge className={statusConfig[member.status] ?? statusConfig.active}>
-                          {member.status === "pending_invite"
+                        <Badge className={statusConfig[status] ?? statusConfig.active}>
+                          {status === "pending_invite"
                             ? "Pending"
-                            : member.status.charAt(0).toUpperCase() + member.status.slice(1)}
+                            : status.charAt(0).toUpperCase() + status.slice(1)}
                         </Badge>
                       </TableCell>
                       <TableCell className="text-muted-foreground">

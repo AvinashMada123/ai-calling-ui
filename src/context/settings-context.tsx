@@ -6,6 +6,7 @@ import {
   useReducer,
   useEffect,
   useCallback,
+  useRef,
   type ReactNode,
 } from "react";
 import type { AppSettings } from "@/types/settings";
@@ -22,6 +23,28 @@ interface SettingsState {
   loaded: boolean;
 }
 
+function mergeSettings(
+  current: AppSettings,
+  updates: Partial<AppSettings>
+): AppSettings {
+  return {
+    ...current,
+    ...updates,
+    defaults: {
+      ...current.defaults,
+      ...(updates.defaults || {}),
+    },
+    appearance: {
+      ...current.appearance,
+      ...(updates.appearance || {}),
+    },
+    ai: {
+      ...current.ai,
+      ...(updates.ai || {}),
+    },
+  };
+}
+
 function settingsReducer(
   state: SettingsState,
   action: SettingsAction
@@ -32,22 +55,7 @@ function settingsReducer(
     case "UPDATE_SETTINGS":
       return {
         ...state,
-        settings: {
-          ...state.settings,
-          ...action.payload,
-          defaults: {
-            ...state.settings.defaults,
-            ...(action.payload.defaults || {}),
-          },
-          appearance: {
-            ...state.settings.appearance,
-            ...(action.payload.appearance || {}),
-          },
-          ai: {
-            ...state.settings.ai,
-            ...(action.payload.ai || {}),
-          },
-        },
+        settings: mergeSettings(state.settings, action.payload),
       };
     case "RESET":
       return { ...state, settings: DEFAULT_SETTINGS };
@@ -59,6 +67,7 @@ function settingsReducer(
 const SettingsContext = createContext<{
   state: SettingsState;
   dispatch: React.Dispatch<SettingsAction>;
+  saveSettings: (updates: Partial<AppSettings>) => Promise<{ success: boolean; error?: string }>;
 } | null>(null);
 
 export function SettingsProvider({ children }: { children: ReactNode }) {
@@ -69,6 +78,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     settings: DEFAULT_SETTINGS,
     loaded: false,
   });
+
+  // Keep a ref to the latest state so async functions always see current values
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   const getToken = useCallback(async () => {
     if (!user) return null;
@@ -89,48 +102,77 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     }
   }, [orgId, initialData]);
 
-  // Enhanced dispatch that also persists via server API
-  const dispatch: React.Dispatch<SettingsAction> = useCallback(
-    (action: SettingsAction) => {
-      baseDispatch(action);
+  // Explicit save function that persists to the API and returns success/failure
+  const saveSettings = useCallback(
+    async (
+      updates: Partial<AppSettings>
+    ): Promise<{ success: boolean; error?: string }> => {
+      // Merge updates with current state to get the FULL settings object
+      const fullSettings = mergeSettings(stateRef.current.settings, updates);
 
-      if (!orgId) return;
+      // Update local state immediately
+      baseDispatch({ type: "SET_SETTINGS", payload: fullSettings });
 
-      const persistSettings = async (settings: Partial<AppSettings>) => {
-        const token = await getToken();
-        if (!token) return;
-        await fetch("/api/data/settings", {
+      if (!orgId) {
+        return { success: false, error: "No organization found" };
+      }
+
+      const token = await getToken();
+      if (!token) {
+        return { success: false, error: "Not authenticated" };
+      }
+
+      try {
+        const res = await fetch("/api/data/settings", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ settings }),
+          body: JSON.stringify({ settings: fullSettings }),
         });
-      };
 
-      switch (action.type) {
-        case "UPDATE_SETTINGS": {
-          persistSettings(action.payload).catch((err) =>
-            console.error("Failed to update settings:", err)
-          );
-          break;
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          return {
+            success: false,
+            error: data.error || `Server error (${res.status})`,
+          };
         }
-        case "RESET": {
-          persistSettings(DEFAULT_SETTINGS).catch((err) =>
-            console.error("Failed to reset settings:", err)
-          );
-          break;
+
+        // Update session cache so reloads reflect the saved settings
+        try {
+          const cached = sessionStorage.getItem("wl_init");
+          if (cached) {
+            const parsed = JSON.parse(cached);
+            parsed.settings = fullSettings;
+            sessionStorage.setItem("wl_init", JSON.stringify(parsed));
+          }
+        } catch {
+          // sessionStorage not available — non-critical
         }
-        default:
-          break;
+
+        return { success: true };
+      } catch (err) {
+        return {
+          success: false,
+          error: err instanceof Error ? err.message : "Network error",
+        };
       }
     },
     [orgId, getToken]
   );
 
+  // Dispatch wrapper — updates local state only (no auto-persist)
+  const dispatch: React.Dispatch<SettingsAction> = useCallback(
+    (action: SettingsAction) => {
+      baseDispatch(action);
+    },
+    []
+  );
+
   return (
-    <SettingsContext.Provider value={{ state, dispatch }}>
+    <SettingsContext.Provider value={{ state, dispatch, saveSettings }}>
       {children}
     </SettingsContext.Provider>
   );

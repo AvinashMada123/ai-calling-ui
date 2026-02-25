@@ -26,7 +26,8 @@ import {
 import { Switch } from "@/components/ui/switch";
 
 export function SettingsForm() {
-  const { settings, updateSettings, resetToDefaults } = useSettings();
+  const { settings, saveSettings, resetToDefaults } = useSettings();
+  const [saving, setSaving] = useState(false);
 
   const [clientName, setClientName] = useState(settings.defaults.clientName);
   const [agentName, setAgentName] = useState(settings.defaults.agentName);
@@ -93,8 +94,9 @@ export function SettingsForm() {
     setAnimationsEnabled(settings.appearance.animationsEnabled);
   }, [settings]);
 
-  const handleSave = () => {
-    updateSettings({
+  const handleSave = async () => {
+    setSaving(true);
+    const result = await saveSettings({
       defaults: {
         clientName,
         agentName,
@@ -119,12 +121,23 @@ export function SettingsForm() {
         animationsEnabled,
       },
     });
-    toast.success("Settings saved");
+    setSaving(false);
+    if (result.success) {
+      toast.success("Settings saved");
+    } else {
+      toast.error(`Failed to save settings: ${result.error || "Unknown error"}`);
+    }
   };
 
-  const handleReset = () => {
-    resetToDefaults();
-    toast.success("Settings reset to defaults");
+  const handleReset = async () => {
+    setSaving(true);
+    const result = await resetToDefaults();
+    setSaving(false);
+    if (result.success) {
+      toast.success("Settings reset to defaults");
+    } else {
+      toast.error(`Failed to reset settings: ${result.error || "Unknown error"}`);
+    }
   };
 
   const containerVariants = {
@@ -424,8 +437,10 @@ export function SettingsForm() {
 
       {/* Footer Buttons */}
       <motion.div variants={itemVariants} className="flex gap-4">
-        <Button onClick={handleSave}>Save Settings</Button>
-        <Button variant="outline" onClick={handleReset}>
+        <Button onClick={handleSave} disabled={saving}>
+          {saving ? "Saving..." : "Save Settings"}
+        </Button>
+        <Button variant="outline" onClick={handleReset} disabled={saving}>
           Reset to Defaults
         </Button>
       </motion.div>
