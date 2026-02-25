@@ -371,11 +371,11 @@ function ContextTab({
   onVoiceChange: (v: string) => void;
 }) {
   const fields: { key: Exclude<keyof BotContextVariables, "customVariables">; label: string; placeholder: string; variable: string }[] = [
-    { key: "agentName", label: "Agent Name", placeholder: "e.g. Priya", variable: "{agent_name}" },
-    { key: "companyName", label: "Company Name", placeholder: "e.g. FutureWorks AI", variable: "{company_name}" },
-    { key: "eventName", label: "Event Name", placeholder: "e.g. AI Masterclass", variable: "{event_name}" },
-    { key: "eventHost", label: "Event Host", placeholder: "e.g. Avinash", variable: "{event_host}" },
-    { key: "location", label: "Location", placeholder: "e.g. Hyderabad", variable: "{location}" },
+    { key: "agentName", label: "Agent Name", placeholder: "e.g. Sarah", variable: "{agent_name}" },
+    { key: "companyName", label: "Company Name", placeholder: "e.g. Acme Corp", variable: "{company_name}" },
+    { key: "eventName", label: "Event Name", placeholder: "e.g. Product Launch", variable: "{event_name}" },
+    { key: "eventHost", label: "Event Host", placeholder: "e.g. John", variable: "{event_host}" },
+    { key: "location", label: "Location", placeholder: "e.g. Mumbai", variable: "{location}" },
   ];
 
   const customVars = contextVariables.customVariables || {};

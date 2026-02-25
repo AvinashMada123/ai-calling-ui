@@ -1,4 +1,4 @@
-// Server-side in-memory store for pending call updates from n8n webhook.
+// Server-side in-memory store for pending call updates from the call-ended webhook.
 // The /api/call-ended endpoint writes here, and /api/call-updates reads + clears.
 // Updates are keyed by orgId for multi-tenant isolation.
 

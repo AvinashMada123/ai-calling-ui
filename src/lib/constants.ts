@@ -71,15 +71,15 @@ export const QUALIFICATION_LEVEL_CONFIG = {
 
 export const DEFAULT_SETTINGS: AppSettings = {
   defaults: {
-    clientName: "fwai",
-    agentName: "Rahul",
-    companyName: "Freedom with AI",
-    eventName: "AI Masterclass",
-    eventHost: "Avinash Mada",
+    clientName: "",
+    agentName: "",
+    companyName: "",
+    eventName: "",
+    eventHost: "",
     voice: "Puck",
-    location: "Hyderabad",
+    location: "",
   },
-  webhookUrl: "https://n8n.srv1100770.hstgr.cloud/webhook/start-call",
+  webhookUrl: "",
   ghlWhatsappWebhookUrl: "",
   ghlApiKey: "",
   ghlLocationId: "",

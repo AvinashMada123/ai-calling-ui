@@ -169,6 +169,7 @@ export async function GET(request: NextRequest) {
               total_nudges: 0,
             },
             transcript: call.transcript || "",
+            transcript_entries: call.transcript_entries || [],
             recording_url: `/api/calls/${call.call_uuid}/recording`,
           };
 

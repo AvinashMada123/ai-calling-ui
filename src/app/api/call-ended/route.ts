@@ -25,14 +25,57 @@ export async function POST(request: NextRequest) {
     if (!data.recording_url && data.call_uuid) {
       data.recording_url = `/api/calls/${data.call_uuid}/recording`;
     }
-    if (!data.transcript_entries) {
+    if (!data.transcript_entries || !Array.isArray(data.transcript_entries)) {
       data.transcript_entries = [];
+    }
+    console.log("[API /api/call-ended] transcript_entries count:", data.transcript_entries.length);
+    console.log("[API /api/call-ended] transcript length:", (data.transcript || "").length);
+
+    // Extract orgId: prefer query param (reliable), fall back to body (if call server passes it through)
+    const orgId: string = queryOrgId || data.orgId || "";
+
+    // Load bot config qualification criteria for Gemini (if org has a bot config)
+    let qualificationCriteria: { hot?: string; warm?: string; cold?: string } | undefined;
+    if (orgId) {
+      try {
+        // Find the call doc to get botConfigId, then load the bot config
+        const callsSnap = await adminDb
+          .collection("organizations").doc(orgId)
+          .collection("calls")
+          .where("callUuid", "==", data.call_uuid)
+          .limit(1)
+          .get();
+        const botConfigId = callsSnap.empty ? null : callsSnap.docs[0].data()?.botConfigId;
+        if (botConfigId) {
+          const bcSnap = await adminDb
+            .collection("organizations").doc(orgId)
+            .collection("botConfigs").doc(botConfigId)
+            .get();
+          if (bcSnap.exists) {
+            qualificationCriteria = bcSnap.data()?.qualificationCriteria;
+          }
+        }
+        // Fall back to active bot config
+        if (!qualificationCriteria) {
+          const activeSnap = await adminDb
+            .collection("organizations").doc(orgId)
+            .collection("botConfigs")
+            .where("isActive", "==", true)
+            .limit(1)
+            .get();
+          if (!activeSnap.empty) {
+            qualificationCriteria = activeSnap.docs[0].data()?.qualificationCriteria;
+          }
+        }
+      } catch (err) {
+        console.error("[API /api/call-ended] Failed to load qualification criteria (non-fatal):", err);
+      }
     }
 
     // Qualify lead with Gemini if we have question pairs
     if (data.question_pairs && data.question_pairs.length > 0) {
       try {
-        const qualification = await qualifyLead(data);
+        const qualification = await qualifyLead(data, qualificationCriteria);
         if (qualification) {
           data.qualification = qualification;
           console.log(
@@ -43,9 +86,6 @@ export async function POST(request: NextRequest) {
         console.error("[API /api/call-ended] Qualification error (non-fatal):", err);
       }
     }
-
-    // Extract orgId: prefer query param (reliable), fall back to body (if call server passes it through)
-    const orgId: string = queryOrgId || data.orgId || "";
 
     // Update Firestore if orgId is present
     if (orgId) {

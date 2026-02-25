@@ -408,18 +408,31 @@ export function CallDetailModal({ call, open, onOpenChange }: CallDetailModalPro
 
 /* ========== Transcript Tab with 3-level fallback ========== */
 function SpeakerBadge({ role }: { role: string }) {
-  const isAgent = /agent|bot|ai/i.test(role);
+  const normalized = role.trim().toUpperCase();
+  const isAgent = /AGENT|BOT|AI/.test(normalized);
+  const isSystem = normalized === "SYSTEM";
+  const isTool = /^TOOL/.test(normalized);
+
+  let label = "User";
+  let className = "bg-muted text-muted-foreground border-border";
+
+  if (isAgent) {
+    label = "Agent";
+    className = "bg-primary/10 text-primary border-primary/20";
+  } else if (isSystem) {
+    label = "System";
+    className = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+  } else if (isTool) {
+    label = "Tool";
+    className = "bg-violet-500/10 text-violet-400 border-violet-500/20";
+  }
+
   return (
     <Badge
       variant="outline"
-      className={cn(
-        "text-[10px] shrink-0",
-        isAgent
-          ? "bg-primary/10 text-primary border-primary/20"
-          : "bg-muted text-muted-foreground border-border"
-      )}
+      className={cn("text-[10px] shrink-0", className)}
     >
-      {isAgent ? "Agent" : "User"}
+      {label}
     </Badge>
   );
 }
@@ -427,13 +440,28 @@ function SpeakerBadge({ role }: { role: string }) {
 function TranscriptTab({ data }: { data: CallEndedData }) {
   // Level 1: structured transcript_entries from backend
   if (data.transcript_entries && data.transcript_entries.length > 0) {
+    // Merge consecutive entries from the same speaker (backend sends word-by-word fragments)
+    const merged: Array<{ role: string; text: string; timestamp: string }> = [];
+    for (const entry of data.transcript_entries) {
+      const last = merged[merged.length - 1];
+      if (
+        last &&
+        last.role.toUpperCase() === entry.role.toUpperCase() &&
+        entry.text.trim()
+      ) {
+        last.text = last.text + " " + entry.text;
+      } else {
+        merged.push({ ...entry });
+      }
+    }
+
     return (
       <div className="space-y-3">
         <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
         <div className="rounded-lg border bg-muted/20 overflow-hidden">
           <table className="w-full text-sm">
             <tbody>
-              {data.transcript_entries.map((entry, i) => (
+              {merged.map((entry, i) => (
                 <tr key={i} className="border-b last:border-b-0">
                   <td className="px-3 py-2 align-top w-16">
                     <SpeakerBadge role={entry.role} />
@@ -455,24 +483,56 @@ function TranscriptTab({ data }: { data: CallEndedData }) {
     );
   }
 
-  // Level 2: parse raw transcript text for Agent:/User: lines
+  // Level 2: parse raw transcript text
+  // Supports formats:
+  //   [HH:MM:SS] ROLE: text   (wavelength backend format)
+  //   ROLE: text               (simple prefix format)
+  //   Agent: text / User: text (legacy format)
   if (data.transcript) {
     const lines = data.transcript.split("\n").filter((l) => l.trim());
     const parsed = lines.map((line) => {
-      const match = line.match(/^(Agent|User|Bot|AI|Human)\s*:\s*(.*)/i);
-      if (match) return { role: match[1], text: match[2] };
-      return { role: "", text: line };
+      // Format: [HH:MM:SS] ROLE: text
+      const timestampMatch = line.match(
+        /^\[(\d{2}:\d{2}:\d{2})\]\s+(AGENT|USER|SYSTEM|TOOL|TOOL_RESULT|BOT|AI|HUMAN)\s*:\s*(.*)/i
+      );
+      if (timestampMatch) {
+        return { role: timestampMatch[2], text: timestampMatch[3], timestamp: timestampMatch[1] };
+      }
+      // Format: ROLE: text (no timestamp)
+      const simpleMatch = line.match(
+        /^(AGENT|USER|SYSTEM|TOOL|TOOL_RESULT|Bot|AI|Human|Agent)\s*:\s*(.*)/i
+      );
+      if (simpleMatch) {
+        return { role: simpleMatch[1], text: simpleMatch[2], timestamp: "" };
+      }
+      return { role: "", text: line, timestamp: "" };
     });
     const hasRoles = parsed.some((p) => p.role);
 
     if (hasRoles) {
+      // Merge consecutive lines from the same speaker (backend sends word-by-word fragments)
+      const merged: typeof parsed = [];
+      for (const entry of parsed) {
+        const last = merged[merged.length - 1];
+        if (
+          last &&
+          entry.role &&
+          last.role.toUpperCase() === entry.role.toUpperCase() &&
+          entry.text.trim()
+        ) {
+          last.text = last.text + " " + entry.text;
+        } else {
+          merged.push({ ...entry });
+        }
+      }
+
       return (
         <div className="space-y-3">
           <h4 className="text-sm font-semibold mb-2">Full Transcript</h4>
           <div className="rounded-lg border bg-muted/20 overflow-hidden">
             <table className="w-full text-sm">
               <tbody>
-                {parsed.map((entry, i) => (
+                {merged.map((entry, i) => (
                   <tr key={i} className="border-b last:border-b-0">
                     <td className="px-3 py-2 align-top w-16">
                       {entry.role ? <SpeakerBadge role={entry.role} /> : null}
@@ -480,6 +540,11 @@ function TranscriptTab({ data }: { data: CallEndedData }) {
                     <td className="px-3 py-2 text-muted-foreground leading-relaxed">
                       {entry.text}
                     </td>
+                    {entry.timestamp && (
+                      <td className="px-3 py-2 align-top text-xs text-muted-foreground/60 whitespace-nowrap w-16">
+                        {entry.timestamp}
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>

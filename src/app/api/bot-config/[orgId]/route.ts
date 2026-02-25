@@ -34,7 +34,7 @@ export async function GET(
     const orgData = orgDoc.data();
     const settings = orgData?.settings?.defaults || {};
 
-    // Format for n8n consumption
+    // Format for external API consumption
     const response = {
       prompt: config.prompt,
       questions: config.questions.sort((a: any, b: any) => a.order - b.order).map((q: any) => ({

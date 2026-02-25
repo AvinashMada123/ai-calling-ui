@@ -6,10 +6,6 @@ const CALL_SERVER_URL =
   process.env.CALL_SERVER_URL ||
   "http://34.93.142.172:3005/call/conversational";
 
-const N8N_TRANSCRIPT_WEBHOOK_URL =
-  process.env.N8N_TRANSCRIPT_WEBHOOK_URL ||
-  "https://n8n.srv1100770.hstgr.cloud/webhook/fwai-transcript";
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function transformBotConfig(config: any) {
   const questions = (config.questions || [])
@@ -92,17 +88,22 @@ export async function POST(request: NextRequest) {
     const protocol = host.includes("localhost") ? "http" : "https";
     const callEndWebhookUrl = `${protocol}://${host}/api/call-ended${orgId ? `?orgId=${orgId}` : ""}`;
 
-    // Read org settings (GHL + Plivo) from Firestore
+    // Read org settings (GHL + Plivo + clientName) from Firestore
     let ghlWhatsappWebhookUrl = "";
     let ghlApiKey = "";
     let ghlLocationId = "";
     let plivoAuthId = "";
     let plivoAuthToken = "";
     let plivoPhoneNumber = "";
+    let orgClientName = "";
+    let orgSlug = "";
     if (orgId) {
       const orgDoc = await adminDb.collection("organizations").doc(orgId).get();
       if (orgDoc.exists) {
-        const orgSettings = orgDoc.data()?.settings;
+        const orgData = orgDoc.data();
+        const orgSettings = orgData?.settings;
+        orgSlug = orgData?.slug || "";
+        orgClientName = orgSettings?.defaults?.clientName || "";
         ghlWhatsappWebhookUrl = orgSettings?.ghlWhatsappWebhookUrl || "";
         ghlApiKey = orgSettings?.ghlApiKey || "";
         ghlLocationId = orgSettings?.ghlLocationId || "";
@@ -121,9 +122,8 @@ export async function POST(request: NextRequest) {
     const callServerPayload: Record<string, unknown> = {
       phoneNumber: payload.phoneNumber,
       contactName: payload.contactName || "Customer",
-      clientName: payload.clientName || "fwai",
+      clientName: payload.clientName || orgClientName || orgSlug || orgId,
       orgId,
-      n8nWebhookUrl: N8N_TRANSCRIPT_WEBHOOK_URL,
       callEndWebhookUrl,
       context,
       ...botConfigPayload,

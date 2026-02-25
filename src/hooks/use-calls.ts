@@ -139,6 +139,7 @@ export function useCalls() {
       request,
       status: "initiating",
       initiatedAt: new Date().toISOString(),
+      botConfigId: request.botConfigId || undefined,
     };
 
     dispatch({ type: "ADD_CALL", payload: callRecord });

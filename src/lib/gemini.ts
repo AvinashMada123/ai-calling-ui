@@ -4,7 +4,8 @@ import type { QualificationResult } from "@/types/qualification";
 import { QUESTION_CATEGORY_MAP, HIGH_SIGNAL_QUESTIONS } from "@/types/qualification";
 
 export async function qualifyLead(
-  callData: CallEndedData
+  callData: CallEndedData,
+  qualificationCriteria?: { hot?: string; warm?: string; cold?: string }
 ): Promise<QualificationResult | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
@@ -27,14 +28,22 @@ A: ${qp.user_said}`;
     })
     .join("\n\n");
 
-  const prompt = `You are an expert lead qualification analyst for "Freedom with AI", a company that helps professionals upskill in AI.
+  // Use actual company name from call data, fall back to client_name
+  const companyName = callData.client_name || "the company";
+
+  // Use bot config qualification criteria if available, otherwise use generic defaults
+  const hotCriteria = qualificationCriteria?.hot || "Shows clear intent, has budget and authority, ready to act soon";
+  const warmCriteria = qualificationCriteria?.warm || "Interested but no clear urgency or timeline";
+  const coldCriteria = qualificationCriteria?.cold || "Just exploring, no real intent to proceed";
+
+  const prompt = `You are an expert lead qualification analyst for "${companyName}".
 
 Analyze this call transcript Q&A and classify the lead.
 
 ## Qualification Criteria
-- **HOT**: Working professional with clear pain points OR business owner, shows urgency to act, ready to invest
-- **WARM**: Interested in AI upskilling but no clear urgency or timeline
-- **COLD**: Student with no income, just exploring, no real intent to invest
+- **HOT**: ${hotCriteria}
+- **WARM**: ${warmCriteria}
+- **COLD**: ${coldCriteria}
 
 ## Call Data
 - Contact: ${callData.contact_name}

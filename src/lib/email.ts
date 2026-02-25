@@ -8,7 +8,7 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const FROM = process.env.EMAIL_FROM || process.env.GMAIL_USER || "noreply@fwai.app";
+const FROM = process.env.EMAIL_FROM || process.env.GMAIL_USER || "noreply@example.com";
 
 export async function sendInviteEmail({
   to,
