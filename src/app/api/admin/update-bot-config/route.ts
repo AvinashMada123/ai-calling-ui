@@ -34,12 +34,13 @@ export async function POST(request: NextRequest) {
     // Strip undefined values
     const clean = JSON.parse(JSON.stringify(updates));
 
-    await configRef.update({
-      ...clean,
-      updatedAt: new Date().toISOString(),
-    });
+    // Get existing data and merge with updates, then set entirely
+    const existing = snap.docs[0].data();
+    const merged = { ...existing, ...clean, updatedAt: new Date().toISOString() };
 
-    return NextResponse.json({ success: true, configId });
+    await configRef.set(merged);
+
+    return NextResponse.json({ success: true, configId, fieldsUpdated: Object.keys(clean) });
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     console.error("[Admin Update Bot Config] Error:", msg);
