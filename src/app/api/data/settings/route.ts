@@ -29,10 +29,19 @@ export async function POST(request: NextRequest) {
     const orgId = await getOrgId(request);
     const db = getAdminDb();
     const { settings } = await request.json();
-    await db.collection("organizations").doc(orgId).update({ settings, updatedAt: new Date().toISOString() });
+
+    // Firestore rejects undefined values — strip them before saving
+    const clean = JSON.parse(JSON.stringify(settings));
+
+    // Use set with merge to handle cases where the org doc may not have a settings field yet
+    await db.collection("organizations").doc(orgId).set(
+      { settings: clean, updatedAt: new Date().toISOString() },
+      { merge: true }
+    );
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("[Settings API] POST error:", error);
-    return NextResponse.json({ success: false }, { status: 500 });
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("[Settings API] POST error:", msg, error);
+    return NextResponse.json({ success: false, error: msg }, { status: 500 });
   }
 }
