@@ -1,125 +1,282 @@
 "use client";
 
-import { GitBranch, Zap, MessageSquare, Shield } from "lucide-react";
+import { useMemo, useCallback } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  type Node,
+  type Edge,
+  type NodeTypes,
+  Handle,
+  Position,
+  useReactFlow,
+  ReactFlowProvider,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import dagre from "dagre";
+import { Zap, GitBranch, Shield, MessageSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { BotQuestion, BotObjection } from "@/types/bot-config";
 
-interface TreeNode {
-  question: BotQuestion;
-  children: TreeNode[];
+/* ========== Custom Node Components ========== */
+
+function QuestionNode({ data }: { data: BotQuestion & { hasBranches: boolean } }) {
+  const categoryColors: Record<string, string> = {
+    greeting: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300",
+    discovery: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
+    qualification: "bg-purple-100 text-purple-800 dark:bg-purple-900/40 dark:text-purple-300",
+    objection_handling: "bg-orange-100 text-orange-800 dark:bg-orange-900/40 dark:text-orange-300",
+    closing: "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300",
+    followup: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/40 dark:text-cyan-300",
+  };
+
+  const catClass = data.category ? categoryColors[data.category] || "bg-muted text-muted-foreground" : "";
+
+  return (
+    <div className="bg-card border-2 border-border rounded-xl shadow-md px-4 py-3 min-w-[200px] max-w-[280px]">
+      <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-3 !border-2 !border-background" />
+
+      <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+        <span className="font-mono text-[11px] font-semibold text-muted-foreground">{data.id}</span>
+        {data.isHighSignal && <Zap className="size-3.5 text-amber-500" />}
+        {data.hasBranches && <GitBranch className="size-3.5 text-purple-500" />}
+      </div>
+
+      {data.category && (
+        <span className={`inline-block text-[10px] font-medium px-1.5 py-0.5 rounded-full mb-1.5 ${catClass}`}>
+          {data.category}
+        </span>
+      )}
+
+      <p className="text-sm leading-snug line-clamp-3">{data.prompt}</p>
+
+      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-3 !h-3 !border-2 !border-background" />
+    </div>
+  );
 }
 
-export function buildFlowTree(questions: BotQuestion[]): TreeNode[] {
-  const sorted = [...questions].sort((a, b) => a.order - b.order);
-  const nodeMap = new Map<string, TreeNode>();
+function ObjectionNode({ data }: { data: BotObjection }) {
+  return (
+    <div className="bg-orange-50 dark:bg-orange-950/30 border-2 border-orange-300 dark:border-orange-700 rounded-xl shadow-md px-4 py-3 min-w-[180px] max-w-[260px]">
+      <Handle type="target" position={Position.Top} className="!bg-orange-500 !w-3 !h-3 !border-2 !border-background" />
 
-  for (const q of sorted) {
-    nodeMap.set(q.id, { question: q, children: [] });
+      <div className="flex items-center gap-1.5 mb-1.5">
+        <Shield className="size-3.5 text-orange-500" />
+        <span className="font-mono text-[11px] font-semibold text-orange-600 dark:text-orange-400">{data.key}</span>
+      </div>
+
+      <div className="flex gap-1 flex-wrap mb-1.5">
+        {data.keywords.slice(0, 3).map((kw) => (
+          <span key={kw} className="text-[10px] bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300 px-1.5 py-0.5 rounded-full">
+            {kw}
+          </span>
+        ))}
+        {data.keywords.length > 3 && (
+          <span className="text-[10px] text-orange-500">+{data.keywords.length - 3}</span>
+        )}
+      </div>
+
+      <p className="text-xs leading-snug line-clamp-2 text-orange-800 dark:text-orange-200">{data.response}</p>
+    </div>
+  );
+}
+
+const nodeTypes: NodeTypes = {
+  question: QuestionNode,
+  objection: ObjectionNode,
+};
+
+/* ========== Dagre Layout ========== */
+
+const NODE_WIDTH = 260;
+const NODE_HEIGHT = 120;
+const OBJECTION_WIDTH = 240;
+const OBJECTION_HEIGHT = 100;
+
+function layoutGraph(nodes: Node[], edges: Edge[]): Node[] {
+  const g = new dagre.graphlib.Graph();
+  g.setDefaultEdgeLabel(() => ({}));
+  g.setGraph({ rankdir: "TB", nodesep: 60, ranksep: 80 });
+
+  for (const node of nodes) {
+    const w = node.type === "objection" ? OBJECTION_WIDTH : NODE_WIDTH;
+    const h = node.type === "objection" ? OBJECTION_HEIGHT : NODE_HEIGHT;
+    g.setNode(node.id, { width: w, height: h });
+  }
+  for (const edge of edges) {
+    g.setEdge(edge.source, edge.target);
   }
 
-  const roots: TreeNode[] = [];
+  dagre.layout(g);
+
+  return nodes.map((node) => {
+    const pos = g.node(node.id);
+    const w = node.type === "objection" ? OBJECTION_WIDTH : NODE_WIDTH;
+    const h = node.type === "objection" ? OBJECTION_HEIGHT : NODE_HEIGHT;
+    return {
+      ...node,
+      position: { x: pos.x - w / 2, y: pos.y - h / 2 },
+    };
+  });
+}
+
+/* ========== Build Nodes & Edges ========== */
+
+function buildNodesAndEdges(
+  questions: BotQuestion[],
+  objections: BotObjection[]
+): { nodes: Node[]; edges: Edge[] } {
+  const sorted = [...questions].sort((a, b) => a.order - b.order);
+  const childrenOf = new Map<string, BotQuestion[]>();
+
   for (const q of sorted) {
-    const node = nodeMap.get(q.id)!;
-    if (q.parentId && nodeMap.has(q.parentId)) {
-      nodeMap.get(q.parentId)!.children.push(node);
-    } else {
-      roots.push(node);
+    if (q.parentId) {
+      const siblings = childrenOf.get(q.parentId) || [];
+      siblings.push(q);
+      childrenOf.set(q.parentId, siblings);
     }
   }
 
-  return roots;
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  // Question nodes
+  for (const q of sorted) {
+    nodes.push({
+      id: q.id,
+      type: "question",
+      position: { x: 0, y: 0 },
+      data: { ...q, hasBranches: childrenOf.has(q.id) },
+    });
+  }
+
+  // Edges: parent->child with condition labels, or sequential for root linear flow
+  const roots = sorted.filter((q) => !q.parentId);
+  for (let i = 0; i < roots.length - 1; i++) {
+    edges.push({
+      id: `e-${roots[i].id}-${roots[i + 1].id}`,
+      source: roots[i].id,
+      target: roots[i + 1].id,
+      animated: true,
+      style: { stroke: "hsl(var(--primary))", strokeWidth: 2 },
+    });
+  }
+
+  // Branch edges
+  for (const [parentId, children] of childrenOf.entries()) {
+    for (const child of children) {
+      const isPositive =
+        child.condition?.toLowerCase().includes("yes") ||
+        child.condition?.toLowerCase().includes("interested");
+      const isNegative =
+        child.condition?.toLowerCase().includes("no") ||
+        child.condition?.toLowerCase().includes("not");
+
+      edges.push({
+        id: `e-${parentId}-${child.id}`,
+        source: parentId,
+        target: child.id,
+        label: child.condition || undefined,
+        animated: true,
+        style: {
+          stroke: isPositive
+            ? "#22c55e"
+            : isNegative
+            ? "#ef4444"
+            : "#3b82f6",
+          strokeWidth: 2,
+        },
+        labelStyle: {
+          fontSize: 11,
+          fontWeight: 600,
+          fill: isPositive ? "#16a34a" : isNegative ? "#dc2626" : "#2563eb",
+        },
+        labelBgStyle: {
+          fill: "hsl(var(--card))",
+          fillOpacity: 0.9,
+        },
+      });
+    }
+  }
+
+  // Objection nodes (attached to the side)
+  if (objections.length > 0) {
+    for (const obj of objections) {
+      const nodeId = `obj-${obj.key}`;
+      nodes.push({
+        id: nodeId,
+        type: "objection",
+        position: { x: 0, y: 0 },
+        data: obj as unknown as Record<string, unknown>,
+      });
+
+      // Connect objections to the first objection_handling question, or the last root question
+      const objHandlerQ = sorted.find((q) => q.category === "objection_handling");
+      const connectTo = objHandlerQ?.id || roots[roots.length - 1]?.id;
+      if (connectTo) {
+        edges.push({
+          id: `e-${connectTo}-${nodeId}`,
+          source: connectTo,
+          target: nodeId,
+          style: { stroke: "#f97316", strokeWidth: 1.5, strokeDasharray: "5 5" },
+          animated: false,
+        });
+      }
+    }
+  }
+
+  return { nodes: layoutGraph(nodes, edges), edges };
 }
 
-function FlowNode({
-  node,
-  depth,
-  isLast,
+/* ========== Main Component ========== */
+
+function FlowDiagramInner({
+  questions,
+  objections,
   compact,
 }: {
-  node: TreeNode;
-  depth: number;
-  isLast: boolean;
+  questions: BotQuestion[];
+  objections?: BotObjection[];
   compact?: boolean;
 }) {
-  const q = node.question;
-  const hasBranches = node.children.length > 0;
+  const { nodes, edges } = useMemo(
+    () => buildNodesAndEdges(questions, objections || []),
+    [questions, objections]
+  );
+
+  const { fitView } = useReactFlow();
+
+  const onInit = useCallback(() => {
+    setTimeout(() => fitView({ padding: 0.2 }), 50);
+  }, [fitView]);
+
+  if (questions.length === 0) {
+    return (
+      <div className="text-center py-8 text-muted-foreground">
+        No questions defined yet. Add questions in the Questions tab or use &quot;Convert to Flow&quot; to generate from your prompt.
+      </div>
+    );
+  }
 
   return (
-    <div className={depth > 0 ? "ml-6 relative" : ""}>
-      {/* Vertical connector line */}
-      {depth > 0 && (
-        <>
-          <div className="absolute left-[-16px] top-0 bottom-0 w-px bg-border" />
-          <div className="absolute left-[-16px] top-5 w-4 h-px bg-border" />
-        </>
-      )}
-
-      <div className={`relative ${compact ? "mb-2" : "mb-3"}`}>
-        <div
-          className={`rounded-lg border bg-card p-3 ${
-            compact ? "text-sm" : ""
-          }`}
-        >
-          <div className="flex items-start gap-2">
-            <span className="text-xs font-mono text-muted-foreground shrink-0 mt-0.5">
-              {q.order}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-1.5 flex-wrap mb-1">
-                <span className="font-mono text-xs text-muted-foreground">
-                  {q.id}
-                </span>
-                {q.condition && (
-                  <Badge
-                    variant="outline"
-                    className={`text-[10px] px-1.5 py-0 ${
-                      q.condition.toLowerCase().includes("yes") ||
-                      q.condition.toLowerCase().includes("interested")
-                        ? "border-green-500/50 text-green-600 dark:text-green-400"
-                        : q.condition.toLowerCase().includes("no") ||
-                          q.condition.toLowerCase().includes("not")
-                        ? "border-red-500/50 text-red-600 dark:text-red-400"
-                        : "border-blue-500/50 text-blue-600 dark:text-blue-400"
-                    }`}
-                  >
-                    {q.condition}
-                  </Badge>
-                )}
-                {q.isHighSignal && (
-                  <Zap className="size-3 text-amber-500 shrink-0" />
-                )}
-                {hasBranches && (
-                  <GitBranch className="size-3 text-purple-500 shrink-0" />
-                )}
-                {q.category && (
-                  <Badge variant="secondary" className="text-[10px] px-1.5 py-0">
-                    {q.category}
-                  </Badge>
-                )}
-              </div>
-              <p className={`text-sm ${compact ? "line-clamp-2" : ""}`}>
-                {q.prompt}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Children */}
-      {node.children.length > 0 && (
-        <div>
-          {node.children.map((child, i) => (
-            <FlowNode
-              key={child.question.id}
-              node={child}
-              depth={depth + 1}
-              isLast={i === node.children.length - 1}
-              compact={compact}
-            />
-          ))}
-        </div>
-      )}
+    <div className={compact ? "h-[350px]" : "h-[600px]"}>
+      <ReactFlow
+        nodes={nodes}
+        edges={edges}
+        nodeTypes={nodeTypes}
+        onInit={onInit}
+        fitView
+        minZoom={0.2}
+        maxZoom={1.5}
+        proOptions={{ hideAttribution: true }}
+        className="rounded-lg"
+      >
+        <Background gap={16} size={1} />
+        <Controls showInteractive={false} />
+        {!compact && <MiniMap zoomable pannable className="!bg-muted !border-border" />}
+      </ReactFlow>
     </div>
   );
 }
@@ -133,73 +290,28 @@ export function FlowTreeView({
   objections?: BotObjection[];
   compact?: boolean;
 }) {
-  const tree = buildFlowTree(questions);
-
-  if (questions.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        No questions defined yet. Add questions in the Questions tab or generate from a prompt.
-      </div>
-    );
-  }
-
   return (
-    <div className="space-y-4">
-      <div>
-        {tree.map((node, i) => (
-          <FlowNode
-            key={node.question.id}
-            node={node}
-            depth={0}
-            isLast={i === tree.length - 1}
-            compact={compact}
-          />
-        ))}
-      </div>
-
-      {/* Objection handlers */}
-      {objections && objections.length > 0 && (
-        <div className={`border-t pt-4 ${compact ? "mt-2" : "mt-4"}`}>
-          <div className="flex items-center gap-2 mb-3">
-            <Shield className="size-4 text-muted-foreground" />
-            <span className="text-sm font-medium">
-              Objection Handlers ({objections.length})
-            </span>
-          </div>
-          <div className="grid gap-2">
-            {objections.map((obj) => (
-              <div
-                key={obj.key}
-                className="rounded-lg border bg-card p-2.5 text-sm"
-              >
-                <div className="flex items-center gap-2 mb-1">
-                  <MessageSquare className="size-3 text-muted-foreground shrink-0" />
-                  <span className="font-mono text-xs text-muted-foreground">
-                    {obj.key}
-                  </span>
-                  <div className="flex gap-1 flex-wrap">
-                    {obj.keywords.slice(0, compact ? 3 : undefined).map((kw) => (
-                      <Badge
-                        key={kw}
-                        variant="secondary"
-                        className="text-[10px] px-1 py-0"
-                      >
-                        {kw}
-                      </Badge>
-                    ))}
-                    {compact && obj.keywords.length > 3 && (
-                      <span className="text-[10px] text-muted-foreground">
-                        +{obj.keywords.length - 3}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <p className={compact ? "line-clamp-1" : ""}>{obj.response}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-    </div>
+    <ReactFlowProvider>
+      <FlowDiagramInner questions={questions} objections={objections} compact={compact} />
+    </ReactFlowProvider>
   );
+}
+
+// Keep buildFlowTree export for backward compat
+export function buildFlowTree(questions: BotQuestion[]) {
+  const sorted = [...questions].sort((a, b) => a.order - b.order);
+  const nodeMap = new Map<string, { question: BotQuestion; children: { question: BotQuestion; children: unknown[] }[] }>();
+  for (const q of sorted) {
+    nodeMap.set(q.id, { question: q, children: [] });
+  }
+  const roots: { question: BotQuestion; children: unknown[] }[] = [];
+  for (const q of sorted) {
+    const node = nodeMap.get(q.id)!;
+    if (q.parentId && nodeMap.has(q.parentId)) {
+      nodeMap.get(q.parentId)!.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+  return roots;
 }
