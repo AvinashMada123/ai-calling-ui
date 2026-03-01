@@ -261,7 +261,7 @@ export default function BotConfigEditorPage() {
         <div className="flex items-center gap-2">
           <Button variant="outline" onClick={() => setGenerateDialogOpen(true)}>
             <Sparkles className="size-4" />
-            Generate from Prompt
+            Convert to Flow
           </Button>
           <Button onClick={handleSave} disabled={saving}>
             {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
@@ -347,6 +347,7 @@ export default function BotConfigEditorPage() {
         open={generateDialogOpen}
         onOpenChange={setGenerateDialogOpen}
         onApply={handleApplyGeneratedFlow}
+        existingPrompt={prompt}
       />
     </div>
   );
@@ -357,16 +358,25 @@ function GenerateFromPromptDialog({
   open,
   onOpenChange,
   onApply,
+  existingPrompt,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onApply: (flow: ParsedBotFlow) => void;
+  existingPrompt: string;
 }) {
   const { user } = useAuth();
   const [rawPrompt, setRawPrompt] = useState("");
   const [parsing, setParsing] = useState(false);
   const [error, setError] = useState("");
   const [preview, setPreview] = useState<ParsedBotFlow | null>(null);
+
+  // Pre-fill with existing prompt when dialog opens
+  useEffect(() => {
+    if (open && existingPrompt && !rawPrompt) {
+      setRawPrompt(existingPrompt);
+    }
+  }, [open, existingPrompt]);
 
   function resetState() {
     setRawPrompt("");
