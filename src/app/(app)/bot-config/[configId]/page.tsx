@@ -12,11 +12,18 @@ import {
   Loader2,
   Info,
   X,
+  Sparkles,
+  Upload,
+  AlertTriangle,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  GitBranch,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth } from "@/hooks/use-auth";
-import type { BotConfig, BotQuestion, BotObjection, BotContextVariables } from "@/types/bot-config";
+import type { BotConfig, BotQuestion, BotObjection, BotContextVariables, ParsedBotFlow } from "@/types/bot-config";
 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -24,8 +31,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { FlowTreeView } from "@/components/bot-config/flow-tree-view";
 
-type TabId = "prompt" | "context" | "questions" | "objections";
+type TabId = "prompt" | "context" | "questions" | "objections" | "flow";
 
 async function apiBotConfigs(
   user: { getIdToken: () => Promise<string> },
@@ -64,6 +80,7 @@ export default function BotConfigEditorPage() {
   const [objections, setObjections] = useState<BotObjection[]>([]);
   const [contextVariables, setContextVariables] = useState<BotContextVariables>({});
   const [voice, setVoice] = useState("");
+  const [generateDialogOpen, setGenerateDialogOpen] = useState(false);
   const hasLoadedRef = useRef(false);
 
   const populateConfig = useCallback((found: BotConfig) => {
@@ -194,11 +211,21 @@ export default function BotConfigEditorPage() {
     setObjections((prev) => prev.filter((_, i) => i !== index));
   }
 
+  function handleApplyGeneratedFlow(flow: ParsedBotFlow) {
+    setPrompt(flow.prompt);
+    setQuestions(flow.questions);
+    setObjections(flow.objections);
+    setGenerateDialogOpen(false);
+    setActiveTab("flow");
+    toast.success("Flow applied! Review the tabs and click Save when ready.");
+  }
+
   const tabs: { id: TabId; label: string }[] = [
     { id: "prompt", label: "Prompt" },
     { id: "context", label: "Context" },
     { id: "questions", label: "Questions" },
     { id: "objections", label: "Objections" },
+    { id: "flow", label: "Flow" },
   ];
 
   if (loading) {
@@ -231,10 +258,16 @@ export default function BotConfigEditorPage() {
             </p>
           </div>
         </div>
-        <Button onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
-          Save Changes
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => setGenerateDialogOpen(true)}>
+            <Sparkles className="size-4" />
+            Generate from Prompt
+          </Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? <Loader2 className="size-4 animate-spin" /> : <Save className="size-4" />}
+            Save Changes
+          </Button>
+        </div>
       </div>
 
       {/* Tabs */}
@@ -294,8 +327,219 @@ export default function BotConfigEditorPage() {
             onDeleteObjection={handleDeleteObjection}
           />
         )}
+        {activeTab === "flow" && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <GitBranch className="size-5" />
+                Conversation Flow
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <FlowTreeView questions={questions} objections={objections} />
+            </CardContent>
+          </Card>
+        )}
       </motion.div>
+
+      {/* Generate from Prompt Dialog */}
+      <GenerateFromPromptDialog
+        open={generateDialogOpen}
+        onOpenChange={setGenerateDialogOpen}
+        onApply={handleApplyGeneratedFlow}
+      />
     </div>
+  );
+}
+
+/* ========== Generate from Prompt Dialog ========== */
+function GenerateFromPromptDialog({
+  open,
+  onOpenChange,
+  onApply,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onApply: (flow: ParsedBotFlow) => void;
+}) {
+  const { user } = useAuth();
+  const [rawPrompt, setRawPrompt] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [error, setError] = useState("");
+  const [preview, setPreview] = useState<ParsedBotFlow | null>(null);
+
+  function resetState() {
+    setRawPrompt("");
+    setParsing(false);
+    setError("");
+    setPreview(null);
+  }
+
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const text = await file.text();
+    setRawPrompt(text);
+    e.target.value = "";
+  }
+
+  async function handleParse() {
+    if (!user || rawPrompt.trim().length < 20) {
+      setError("Please provide a script with at least 20 characters.");
+      return;
+    }
+    try {
+      setParsing(true);
+      setError("");
+      const idToken = await user.getIdToken();
+      const res = await fetch("/api/bot-config/parse-prompt", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ rawPrompt }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to parse prompt");
+      setPreview(data.flow as ParsedBotFlow);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to parse prompt");
+    } finally {
+      setParsing(false);
+    }
+  }
+
+  const branchCount = preview
+    ? preview.questions.filter((q) => q.parentId).length
+    : 0;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) resetState();
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="size-5" />
+            Generate from Prompt
+          </DialogTitle>
+          <DialogDescription>
+            Paste your sales script and let AI parse it into a structured conversation flow.
+          </DialogDescription>
+        </DialogHeader>
+
+        {!preview ? (
+          /* Input state */
+          <div className="space-y-4">
+            <Textarea
+              value={rawPrompt}
+              onChange={(e) => {
+                setRawPrompt(e.target.value);
+                setError("");
+              }}
+              rows={12}
+              className="font-mono text-sm"
+              placeholder="Paste your raw sales script here..."
+              disabled={parsing}
+            />
+            <div className="flex items-center gap-3">
+              <label className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground hover:text-foreground transition-colors">
+                <Upload className="size-4" />
+                Upload .txt/.md file
+                <input
+                  type="file"
+                  accept=".txt,.md,.text"
+                  className="hidden"
+                  onChange={handleFileUpload}
+                  disabled={parsing}
+                />
+              </label>
+              {rawPrompt.length > 0 && (
+                <span className="text-xs text-muted-foreground">
+                  {rawPrompt.length} characters
+                </span>
+              )}
+            </div>
+            {error && (
+              <div className="flex items-center gap-2 text-sm text-destructive">
+                <AlertTriangle className="size-4 shrink-0" />
+                {error}
+              </div>
+            )}
+            <DialogFooter>
+              <Button
+                onClick={handleParse}
+                disabled={parsing || rawPrompt.trim().length < 20}
+              >
+                {parsing ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" />
+                    Analyzing your script...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="size-4" />
+                    Parse with AI
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          </div>
+        ) : (
+          /* Preview state */
+          <div className="space-y-4">
+            {/* Stats summary */}
+            <div className="flex gap-3 flex-wrap">
+              <Badge variant="secondary">
+                {preview.questions.length} questions
+              </Badge>
+              <Badge variant="secondary">
+                {preview.objections.length} objections
+              </Badge>
+              {branchCount > 0 && (
+                <Badge variant="secondary">
+                  <GitBranch className="size-3 mr-1" />
+                  {branchCount} branches
+                </Badge>
+              )}
+            </div>
+
+            {/* Warning banner */}
+            <div className="flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
+              <AlertTriangle className="size-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <p className="text-amber-800 dark:text-amber-200">
+                This will replace your current prompt, questions, and objections. Review the flow below before applying. You&apos;ll still need to click Save.
+              </p>
+            </div>
+
+            {/* Compact flow preview */}
+            <div className="rounded-lg border p-4 max-h-[40vh] overflow-y-auto">
+              <FlowTreeView
+                questions={preview.questions}
+                objections={preview.objections}
+                compact
+              />
+            </div>
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setPreview(null)}>
+                <ArrowLeft className="size-4" />
+                Back
+              </Button>
+              <Button onClick={() => onApply(preview)}>
+                <ArrowRight className="size-4" />
+                Apply to Config
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -518,6 +762,8 @@ function QuestionsTab({
   onAddQuestion: () => void;
   onDeleteQuestion: (index: number) => void;
 }) {
+  const [expandedBranch, setExpandedBranch] = useState<number | null>(null);
+
   return (
     <div className="space-y-4">
       {questions.map((q, index) => (
@@ -561,6 +807,54 @@ function QuestionsTab({
                     placeholder="Enter the question prompt..."
                   />
                 </div>
+                {/* Branch settings toggle */}
+                <button
+                  type="button"
+                  onClick={() => setExpandedBranch(expandedBranch === index ? null : index)}
+                  className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                >
+                  {expandedBranch === index ? (
+                    <ChevronUp className="size-3" />
+                  ) : (
+                    <ChevronDown className="size-3" />
+                  )}
+                  Branch settings
+                  {(q.parentId || q.condition) && (
+                    <Badge variant="outline" className="text-[10px] px-1 py-0 ml-1">
+                      branched
+                    </Badge>
+                  )}
+                </button>
+                {expandedBranch === index && (
+                  <div className="grid grid-cols-2 gap-2 p-2 rounded border bg-muted/30">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Parent Question</Label>
+                      <select
+                        value={q.parentId || ""}
+                        onChange={(e) => onQuestionUpdate(index, "parentId", e.target.value)}
+                        className="flex h-8 w-full rounded-md border border-input bg-background px-2 py-1 text-xs font-mono shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      >
+                        <option value="">None (root)</option>
+                        {questions
+                          .filter((_, i) => i !== index)
+                          .map((other) => (
+                            <option key={other.id} value={other.id}>
+                              {other.id}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Condition</Label>
+                      <Input
+                        value={q.condition || ""}
+                        onChange={(e) => onQuestionUpdate(index, "condition", e.target.value)}
+                        className="h-8 text-xs"
+                        placeholder='e.g. "yes", "not interested"'
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
               <Button
                 variant="ghost"

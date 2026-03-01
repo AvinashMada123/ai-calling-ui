@@ -4,6 +4,8 @@ export interface BotQuestion {
   category?: string;
   isHighSignal?: boolean;
   order: number;
+  parentId?: string;
+  condition?: string;
 }
 
 export interface BotObjection {
@@ -19,6 +21,17 @@ export interface BotContextVariables {
   eventHost?: string;
   location?: string;
   customVariables?: Record<string, string>;
+}
+
+export interface ParsedBotFlow {
+  prompt: string;
+  questions: BotQuestion[];
+  objections: BotObjection[];
+  qualificationCriteria: {
+    hot: string;
+    warm: string;
+    cold: string;
+  };
 }
 
 export interface BotConfig {
